@@ -29,67 +29,82 @@
 </head>
 <body>
   <div class="app">
-    <!-- 返回栏 -->
-    <header class="detail-header">
-      <button class="back-btn" id="back-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-        返回
-      </button>
-      <div class="detail-game-info">
-        <div class="detail-game-icon" id="detail-game-icon">?</div>
-        <div>
-          <div class="detail-game-name" id="detail-game-name">游戏名</div>
-          <div class="detail-game-id" id="detail-game-id">-</div>
+    <!-- 顶部指令栏 -->
+    <header class="detail-command">
+      <div class="detail-command-left">
+        <button class="icon-btn back-btn" id="back-btn" title="返回">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <div class="brand-chip detail-brand">
+          <div class="brand-chip-logo detail-game-icon" id="detail-game-icon">?</div>
+          <div class="brand-chip-copy">
+            <div class="brand-chip-name" id="detail-game-name">游戏名</div>
+            <div class="brand-chip-sub detail-game-id" id="detail-game-id">—</div>
+          </div>
         </div>
       </div>
-      <div class="detail-grand-mini" id="detail-grand-mini" title="累计收入">
-        <span>累计收入</span>
+      <div class="detail-grand-tile" id="detail-grand-mini" title="累计广告收益">
+        <div class="stat-tile-tag">CUMULATIVE</div>
         <strong id="grand-total">¥—</strong>
       </div>
     </header>
 
-    <!-- 游戏概览（固定，不随月份变） -->
-    <div class="overview-card">
-      <div class="overview-metric">
-        <div class="overview-value" id="ov-yesterday-rev">¥—</div>
-        <div class="overview-label">昨日收入 <span class="mom-tag" id="mom-ov-rev"></span></div>
+    <!-- 游戏概览（overview-card 类名保留作为 JS 插入锚点） -->
+    <div class="overview-card stat-deck">
+      <div class="stat-tile stat-tile-yesterday">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag">YESTERDAY · 广告收益</span>
+          <span class="mom-tag" id="mom-ov-rev"></span>
+        </div>
+        <div class="stat-tile-value" id="ov-yesterday-rev">¥—</div>
       </div>
-      <div class="overview-divider"></div>
-      <div class="overview-metric">
-        <div class="overview-value" id="ov-yesterday-dau">—</div>
-        <div class="overview-label">昨日日活 <span class="mom-tag" id="mom-ov-dau"></span></div>
-        <div class="overview-sub" id="ov-conversion">转化率 —</div>
+      <div class="stat-tile">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag">YESTERDAY · 日活</span>
+          <span class="mom-tag" id="mom-ov-dau"></span>
+        </div>
+        <div class="stat-tile-value" id="ov-yesterday-dau">—</div>
+        <div class="stat-tile-meta" id="ov-conversion">转化率 —</div>
       </div>
-      <div class="overview-divider"></div>
-      <div class="overview-metric">
-        <div class="overview-value" id="ov-month-rev">¥—</div>
-        <div class="overview-label">本月收入 <span class="mom-tag" id="mom-ov-month"></span></div>
+      <div class="stat-tile stat-tile-month">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag">THIS MONTH · 广告收益</span>
+          <span class="mom-tag" id="mom-ov-month"></span>
+        </div>
+        <div class="stat-tile-value" id="ov-month-rev">¥—</div>
       </div>
     </div>
 
-    <!-- 月份选择器 -->
-    <div class="month-toolbar">
-      <button class="month-nav" id="prev-month" title="上个月">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-      </button>
-      <button class="month-title" id="month-title" title="点击选择月份">
-        <svg class="month-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-          <line x1="16" y1="2" x2="16" y2="6"/>
-          <line x1="8" y1="2" x2="8" y2="6"/>
-          <line x1="3" y1="10" x2="21" y2="10"/>
-        </svg>
-        <span id="month-title-text">2026年7月</span>
-      </button>
-      <button class="month-nav" id="next-month" title="下个月">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </button>
+    <!-- 日历区段头 + 月份导航 -->
+    <div class="deck-header cal-deck-header">
+      <div class="deck-title">
+        <span class="deck-index">03</span>
+        CALENDAR
+        <span class="deck-sub">每日收益</span>
+      </div>
+      <div class="cal-nav-cluster" id="month-nav-cluster">
+        <button class="icon-btn month-nav" id="prev-month" title="上个月">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <button class="cal-month-pill" id="month-title" title="点击选择月份">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <span id="month-title-text">2026年7月</span>
+        </button>
+        <button class="icon-btn month-nav" id="next-month" title="下个月">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+      </div>
 
       <!-- 月份选择面板 -->
       <div class="month-picker" id="month-picker" hidden>
@@ -117,7 +132,7 @@
       </div>
     </div>
 
-    <!-- 日历表头 -->
+    <!-- 日历表头（cal-header 类名保留作为 JS 插入锚点） -->
     <div class="cal-header">
       <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
     </div>

@@ -51,7 +51,21 @@ class TapTapApiClient(private val accountManager: AccountManager) {
         .build()
 
     data class FetchResult(val ok: Boolean, val status: Int, val body: String, val error: String?)
-    data class CheckLoginResult(val status: String, val developerId: String?, val error: String? = null)
+
+    /** 登录状态 + 附属账号资料（昵称/头像/开发者主体名/Logo） */
+    data class UserProfile(
+        val nickname: String? = null,
+        val avatar: String? = null,
+        val developerName: String? = null,
+        val developerAvatar: String? = null
+    )
+
+    data class CheckLoginResult(
+        val status: String,
+        val developerId: String?,
+        val error: String? = null,
+        val profile: UserProfile? = null
+    )
 
     suspend fun fetch(url: String): FetchResult = withContext(Dispatchers.IO) {
         try {
@@ -118,9 +132,13 @@ class TapTapApiClient(private val accountManager: AccountManager) {
             }
 
             val meJson = parseJson(meResponse.body)
-            val meDeveloperId = extractDeveloperIdFromMe(meJson)
+            val meData = meJson?.asJsonObjectOrNull()?.get("data")?.asJsonObjectOrNull()
+            val meDeveloperId = extractDeveloperIdFromData(meData)
+            // 从 /me 里尽量抠出昵称 + 头像（字段名在 TapTap 不同版本里变动过，故多候选）
+            val userProfile = extractUserProfile(meData)
+
             if (meDeveloperId != null) {
-                return@withContext CheckLoginResult("ready", meDeveloperId)
+                return@withContext CheckLoginResult("ready", meDeveloperId, profile = userProfile)
             }
 
             // Fallback: developer list
@@ -130,12 +148,20 @@ class TapTapApiClient(private val accountManager: AccountManager) {
             }
             val listJson = parseJson(listResponse.body)
             val ids = extractDeveloperIdsFromList(listJson)
+            // 从 /list 里拿到开发者主体名 + Logo（作为开发者主体级别的工作室信息）
+            val devProfile = extractDeveloperProfile(listJson, ids.firstOrNull())
+            val merged = UserProfile(
+                nickname = userProfile.nickname ?: devProfile.nickname,
+                avatar = userProfile.avatar ?: devProfile.avatar,
+                developerName = devProfile.developerName ?: userProfile.developerName,
+                developerAvatar = devProfile.developerAvatar ?: userProfile.developerAvatar
+            )
             if (ids.isEmpty()) {
                 return@withContext CheckLoginResult("no-developer", null)
             }
             val configuredId = normalizeDeveloperId(configuredDeveloperId)
             val chosenId = if (configuredId != null && ids.contains(configuredId)) configuredId else ids[0]
-            CheckLoginResult("ready", chosenId)
+            CheckLoginResult("ready", chosenId, profile = merged)
         }
 
     // -------------------------------------------------------------------------
@@ -166,6 +192,67 @@ class TapTapApiClient(private val accountManager: AccountManager) {
             if (id != null) seen.add(id)
         }
         return seen.toList()
+    }
+
+    /**
+     * `/api/user/v1/me` 返回的 `data` 字段里尝试抠出昵称和头像。
+     * TapTap 不同历史版本字段名有变，这里兼容多种候选 key，同时支持嵌套的 `user`/`profile` 子对象。
+     */
+    private fun extractUserProfile(meData: JsonObject?): UserProfile {
+        if (meData == null) return UserProfile()
+        val nickname = firstNonBlankString(meData,
+            "nickname", "name", "user_name", "username", "userName")
+            ?: meData.get("user")?.asJsonObjectOrNull().let { firstNonBlankString(it,
+                "nickname", "name", "user_name", "username") }
+            ?: meData.get("profile")?.asJsonObjectOrNull().let { firstNonBlankString(it,
+                "nickname", "name", "user_name", "username") }
+        val avatar = firstNonBlankString(meData,
+            "avatar", "avatar_url", "avatarUrl", "photo", "icon", "headimg", "head_img")
+            ?: meData.get("user")?.asJsonObjectOrNull().let { firstNonBlankString(it,
+                "avatar", "avatar_url", "photo", "icon") }
+            ?: meData.get("profile")?.asJsonObjectOrNull().let { firstNonBlankString(it,
+                "avatar", "avatar_url", "photo", "icon") }
+        return UserProfile(nickname = nickname, avatar = avatar)
+    }
+
+    /**
+     * `/api/developer/v1/list` 返回里抠出开发者主体（工作室）名 + Logo。
+     * 若传入 chosenId，则优先匹配该 developer 的条目；否则取列表第一个。
+     */
+    private fun extractDeveloperProfile(root: JsonElement?, chosenId: String?): UserProfile {
+        val data = root?.asJsonObjectOrNull()?.get("data")?.asJsonObjectOrNull() ?: return UserProfile()
+        val list = data.get("list")?.asJsonArrayOrNull() ?: return UserProfile()
+        val target: JsonObject? = if (chosenId != null) {
+            list.firstOrNull { item ->
+                val id = extractDeveloperIdFromItem(item)
+                id == chosenId
+            }?.asJsonObjectOrNull() ?: list.firstOrNull()?.asJsonObjectOrNull()
+        } else {
+            list.firstOrNull()?.asJsonObjectOrNull()
+        }
+        if (target == null) return UserProfile()
+        val developerName = firstNonBlankString(target,
+            "developer_name", "developerName", "name", "username", "nickname", "title")
+        val developerAvatar = firstNonBlankString(target,
+            "logo", "developer_logo", "developerLogo", "avatar", "icon", "avatar_url")
+        return UserProfile(developerName = developerName, developerAvatar = developerAvatar)
+    }
+
+    private fun firstNonBlankString(obj: JsonObject?, vararg keys: String): String? {
+        if (obj == null) return null
+        for (key in keys) {
+            val v = obj.get(key) ?: continue
+            if (v.isJsonNull) continue
+            if (!v.isJsonPrimitive) continue
+            val p = v.asJsonPrimitive
+            val s = when {
+                p.isString -> p.asString.trim()
+                p.isNumber -> p.asNumber.toString()
+                else -> continue
+            }
+            if (s.isNotEmpty()) return s
+        }
+        return null
     }
 
     private fun extractDeveloperIdFromData(data: JsonElement?): String? {

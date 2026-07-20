@@ -36,15 +36,33 @@ class WebAppInterface(
             if (result.status == "ready" && result.developerId != null) {
                 accountManager.setDeveloperId(result.developerId, addMode = false)
                 accountManager.captureCurrentSessionCookies()
+                // 写入昵称/头像/开发者主体名/Logo（新字段为 null 时不覆盖已有值）
+                result.profile?.let { p ->
+                    accountManager.updateAccountProfile(
+                        developerId = result.developerId,
+                        nickname = p.nickname,
+                        avatar = p.avatar,
+                        developerName = p.developerName,
+                        developerAvatar = p.developerAvatar
+                    )
+                }
             }
             val payload = gson.toJson(
-                mapOf("status" to result.status, "developerId" to result.developerId, "error" to result.error)
+                mapOf(
+                    "status" to result.status,
+                    "developerId" to result.developerId,
+                    "error" to result.error,
+                    "profile" to result.profile
+                )
             )
             webView.post { webView.evaluateJavascript("window.__pendingLoginResolve(${jsString(payload)})", null) }
         }
     }
 
     @JavascriptInterface fun getDeveloperId(): String? = accountManager.getDeveloperId()
+
+    /** 暴露 APP 版本号给 Web 端（来自 BuildConfig.VERSION_NAME，与 build.gradle.kts 同步） */
+    @JavascriptInterface fun getAppVersion(): String = BuildConfig.VERSION_NAME
 
     @JavascriptInterface fun openLogin(mode: String?) {
         val intent = Intent(activity, LoginActivity::class.java)

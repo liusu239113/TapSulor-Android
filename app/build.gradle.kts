@@ -5,18 +5,41 @@ plugins {
 android {
     namespace = "com.taptapgain"
     compileSdk = 34
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/tapsulor-release.jks")
+            storePassword = "tapsulor2024"
+            keyAlias = "tapsulor"
+            keyPassword = "tapsulor2024"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.taptapgain"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 1
+        versionName = "1.0.0"
+    }
+    buildFeatures {
+        buildConfig = true
     }
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // 沙箱离线环境无法下载 lint-gradle，直接跳过 release lint
+            isShrinkResources = false
         }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

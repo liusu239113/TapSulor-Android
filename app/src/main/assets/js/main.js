@@ -15,9 +15,12 @@
   // ========== 主题与设置（最早执行，避免白闪） ==========
   const THEME_KEY = 'taptap_theme_mode';     // 'light' | 'dark'
   const ACCENT_KEY = 'taptap_theme_accent';  // 'cyan' | 'pink' | 'purple' | 'mint'
+  const SOUND_KEY = 'taptap_sound_enabled';  // '1' | '0'
   const SETTINGS_KEYS = {
-    monthGoal: 'taptap_month_goal'
+    monthGoal: 'taptap_month_goal',
+    autorefresh: 'taptap_autorefresh_enabled'  // '1' | '0'，未设置视为默认开启
   };
+  let soundEnabled = true; // init() 中读取 localStorage 覆盖
 
   // 应用主题（可在 DOM 就绪前执行：只改 <html> 上的 data-*）
   function applyTheme(mode, accent) {
@@ -44,6 +47,8 @@
   const savedMode = localStorage.getItem(THEME_KEY) || 'light';
   const savedAccent = localStorage.getItem(ACCENT_KEY) || 'cyan';
   applyTheme(savedMode, savedAccent);
+  // 音效开关：默认开启（本地存储值为 '0' 时才关闭）
+  try { soundEnabled = localStorage.getItem(SOUND_KEY) !== '0'; } catch (_) { soundEnabled = true; }
 
   const API_BASE = 'https://developer.taptap.cn/api';
   // developer_id 从主进程配置动态获取（支持多账号），init() 里赋值
@@ -69,6 +74,7 @@
   Object.values(sounds).forEach(sound => { sound.preload = 'auto'; });
 
   function playSfx(name) {
+    if (!soundEnabled) return;
     const sound = sounds[name];
     if (!sound) return;
     sound.currentTime = 0;
@@ -549,13 +555,13 @@
     renderAmount('summary-month', monthGot.map(g => g.monthRevenue), 600);
     renderAmount('summary-total', totalGot.map(g => g.totalRevenue), 800);
     const label = document.getElementById('summary-today-label');
-    if (label) label.textContent = '昨日已结算';
+    if (label) label.textContent = '昨日广告收益';
     const meta = document.getElementById('summary-total-meta');
     if (meta) {
       const pending = publishedGames.length - totalGot.length;
       meta.textContent = pending > 0
-        ? `${totalGot.length}/${publishedGames.length} 个项目已同步真实结算数据，${pending} 个项目未同步`
-        : `${totalGot.length}/${publishedGames.length} 个项目已同步真实结算数据`;
+        ? `${totalGot.length}/${publishedGames.length} 个项目已同步真实收益数据，${pending} 个项目未同步`
+        : `${totalGot.length}/${publishedGames.length} 个项目已同步真实收益数据`;
     }
     renderMonthGoal(monthTotal, monthGot.length, publishedGames.length);
   }
@@ -643,11 +649,11 @@
                      <div class="game-metric-label">昨日收入</div>`;
       } else if (g.todayRevenue == null) {
         todayHTML = `<div class="game-metric-value muted">暂无</div>
-                     <div class="game-metric-label">昨日结算未同步</div>`;
+                     <div class="game-metric-label">昨日收益未同步</div>`;
       } else {
         const momRev = momTagHTML(g.todayRevenue, g.prevDayRevenue);
         todayHTML = `<div class="game-metric-value">¥${fmt(g.todayRevenue)}</div>
-                     <div class="game-metric-label">昨日已结算 ${momRev}</div>`;
+                     <div class="game-metric-label">昨日广告收益 ${momRev}</div>`;
       }
 
       // 日活 + 转化率块
@@ -676,7 +682,7 @@
       let monthHTML;
       if (!g.published) {
         monthHTML = `<div class="game-metric-value muted">暂无</div>
-                     <div class="game-metric-label">本月结算未同步</div>`;
+                     <div class="game-metric-label">本月收益未同步</div>`;
       } else if (g.monthLoading) {
         monthHTML = `<div class="game-metric-value muted">加载中</div>
                      <div class="game-metric-label">本月</div>`;
@@ -696,16 +702,16 @@
                      ${lastMonthLine}`;
       }
 
-      // 名称下方展示累计已结算金额
+      // 名称下方展示累计广告收益金额
       let subHTML;
       if (!g.published) {
         subHTML = `<span class="game-sub-hint">未发布 · 点击查看详情</span>`;
       } else {
         subHTML = g.totalLoading
-          ? `<span class="game-sub-hint">累计结算同步中…</span>`
+          ? `<span class="game-sub-hint">累计收益同步中…</span>`
           : g.totalRevenue == null
-            ? `<span class="game-sub-hint">累计结算未同步</span>`
-            : `<span class="game-total-pill">累计已结算 ¥${fmt(g.totalRevenue)}</span>`;
+            ? `<span class="game-sub-hint">累计收益未同步</span>`
+            : `<span class="game-total-pill">累计广告收益 ¥${fmt(g.totalRevenue)}</span>`;
       }
 
       return `
@@ -825,10 +831,8 @@
       });
       return;
     }
-    const activeName = document.getElementById('active-account-name');
-    const activeId = document.getElementById('active-account-id');
-    if (activeName) activeName.textContent = `TapTap ${DEVELOPER_ID}`;
-    if (activeId) activeId.textContent = `DEVELOPER ID / ${DEVELOPER_ID}`;
+    // 顶栏显示真实工作室昵称 + 头像（异步渲染，不阻塞后续加载）
+    renderActiveAccountHeader();
     APP_LIST_URL = `${API_BASE}/app/v2/list?developer_id=${encodeURIComponent(DEVELOPER_ID)}&page=1&pagesize=100`;
 
     hideLoginOverlay();
@@ -990,15 +994,20 @@
   const AUTOREFRESH_INTERVAL = 5 * 60 * 1000;
   let autoRefreshTimer = null;
 
-  // 轻量刷新：只重新拉取收入数据（不重新拉 App 列表）
+  // 轻量刷新：重新拉取游戏列表与收入数据（不重置登录态、不闪烁登录遮罩）
   function lightRefresh() {
     if (!isElectron || GAMES.length === 0) return;
     // firstRenderDone 保持 true，避免卡片重新触发错落动画
-    fetchAllRevenue();
+    fetchAppList().then(() => {
+      renderAll();
+      fetchAllRevenue();
+    }).catch((e) => { console.warn('lightRefresh app list failed:', e); fetchAllRevenue(); });
   }
 
   function applyAutoRefresh() {
-    const on = localStorage.getItem(SETTINGS_KEYS.autorefresh) === '1';
+    // 未设置时默认开启自动刷新；用户可在 localStorage 里设 '0' 关闭
+    const stored = localStorage.getItem(SETTINGS_KEYS.autorefresh);
+    const on = stored === null ? true : stored === '1';
     if (on && !autoRefreshTimer) {
       autoRefreshTimer = setInterval(lightRefresh, AUTOREFRESH_INTERVAL);
     } else if (!on && autoRefreshTimer) {
@@ -1007,24 +1016,99 @@
     }
   }
 
+  // 把 APP 版本号（来自 Android BuildConfig）写入页脚 + 设置面板
+  function fillAppVersion() {
+    try {
+      let ver = '';
+      if (isElectron && window.electronAPI && window.electronAPI.getAppVersion) {
+        ver = window.electronAPI.getAppVersion() || '';
+      }
+      const label = ver ? `TapSulor / v${ver}` : 'TapSulor';
+      const f = document.getElementById('app-version-footer');
+      const s = document.getElementById('app-version-settings');
+      if (f) f.textContent = label;
+      if (s) s.textContent = label;
+    } catch (e) { /* ignore */ }
+  }
+
+  // 选择账号主显示名：优先开发者主体(工作室)名 > 用户昵称 > 原始 name
+  function pickAccountDisplayName(acc) {
+    if (acc) {
+      if (acc.developerName && acc.developerName.trim()) return acc.developerName.trim();
+      if (acc.nickname && acc.nickname.trim()) return acc.nickname.trim();
+      if (acc.name && !/^TapTap\s*\d+$/.test(acc.name)) return acc.name;
+    }
+    return acc && acc.developerId ? `TapTap ${acc.developerId}` : 'TapTap 账号';
+  }
+  // 选择账号头像：优先开发者主体 Logo > 用户头像
+  function pickAccountAvatar(acc) {
+    if (!acc) return '';
+    return (acc.developerAvatar && acc.developerAvatar.trim())
+      || (acc.avatar && acc.avatar.trim()) || '';
+  }
+
+  // 渲染顶栏"当前操作员"的头像 + 昵称 + ID
+  async function renderActiveAccountHeader() {
+    const activeName = document.getElementById('active-account-name');
+    const activeId = document.getElementById('active-account-id');
+    const activeAvatar = document.getElementById('active-account-avatar');
+    if (!DEVELOPER_ID) {
+      if (activeName) activeName.textContent = '未识别账号';
+      if (activeId) activeId.textContent = '请先完成 TapTap 开发者登录';
+      if (activeAvatar) { activeAvatar.hidden = true; }
+      return;
+    }
+    let acc = null;
+    try {
+      if (isElectron && window.electronAPI && window.electronAPI.getAccounts) {
+        const data = await window.electronAPI.getAccounts();
+        acc = (data && data.accounts && data.accounts.find(a => a.id === data.current)) || null;
+      }
+    } catch (e) { /* ignore */ }
+    const displayName = pickAccountDisplayName(acc);
+    if (activeName) activeName.textContent = displayName;
+    if (activeId) activeId.textContent = `DEVELOPER ID / ${DEVELOPER_ID}`;
+    if (activeAvatar) {
+      const url = pickAccountAvatar(acc);
+      if (url) {
+        activeAvatar.src = url;
+        activeAvatar.hidden = false;
+        activeAvatar.alt = displayName;
+      } else {
+        activeAvatar.hidden = true;
+      }
+    }
+  }
+
   // ========== 账号管理 ==========
   async function renderAccountList() {
     const listEl = document.getElementById('account-list');
     if (!listEl || !isElectron) return;
     const data = await window.electronAPI.getAccounts();
-    listEl.innerHTML = data.accounts.map(acc => `
+    // 简单 HTML 转义，防止昵称中特殊字符破坏 DOM
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    listEl.innerHTML = data.accounts.map(acc => {
+      const name = esc(pickAccountDisplayName(acc));
+      const avatar = pickAccountAvatar(acc);
+      const avatarHtml = avatar
+        ? `<img class="account-item-avatar" src="${esc(avatar)}" alt="">`
+        : `<div class="account-item-avatar" aria-hidden="true"></div>`;
+      return `
       <div class="account-item ${acc.id === data.current ? 'is-current' : ''}" data-id="${acc.id}">
+        ${avatarHtml}
         <div class="account-item-info">
-          <div class="account-item-name">${acc.name}</div>
-          <div class="account-item-id">ID: ${acc.developerId}</div>
+          <div class="account-item-name">${name}</div>
+          <div class="account-item-id">ID: ${esc(acc.developerId)}</div>
         </div>
         ${acc.id === data.current
           ? '<span class="account-item-tag">当前</span>'
           : `<button class="account-item-btn" data-action="switch">切换</button>`
         }
         <button class="account-item-btn danger" data-action="remove">×</button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   function bindAccountEvents() {
@@ -1129,6 +1213,18 @@
       });
     }
 
+    // 音效开关
+    const soundToggle = document.getElementById('sound-toggle');
+    if (soundToggle) {
+      soundToggle.checked = soundEnabled;
+      soundToggle.addEventListener('change', () => {
+        const enabled = soundToggle.checked;
+        soundEnabled = enabled;
+        try { localStorage.setItem(SOUND_KEY, enabled ? '1' : '0'); } catch (_) {}
+        if (enabled) playSfx('click'); // 开启时播放确认音
+      });
+    }
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !settingsModal.hidden) closeSettings();
     });
@@ -1177,6 +1273,8 @@
         } else if (result && result.switched) {
           showToast(`已切换到账号 TapTap ${result.developerId}`);
         }
+        // 切换账号后顶栏昵称/头像需要刷新
+        renderActiveAccountHeader();
         if (settingsModal && !settingsModal.hidden) renderAccountList();
       });
     }
@@ -1184,6 +1282,20 @@
     if (window.electronAPI.onTrayRefresh) {
       window.electronAPI.onTrayRefresh(() => {
         init();
+      });
+    }
+    // 安卓端：应用从后台切回前台 / 定时 5 分钟自动刷新触发
+    if (window.electronAPI.onAppResume) {
+      window.electronAPI.onAppResume(() => {
+        console.log('[app] onAppResume → init()');
+        init();
+      });
+    }
+    // 安卓端：应用在后台每 5 分钟触发一次轻量刷新（避免长时间停留导致数据陈旧）
+    if (window.electronAPI.onAppBackgroundTick) {
+      window.electronAPI.onAppBackgroundTick(() => {
+        console.log('[app] background tick → lightRefresh()');
+        lightRefresh();
       });
     }
   }
@@ -1196,6 +1308,9 @@
   // 启动
   // ========== 启动 Splash 动画 + 音效（仅首次进入，详情页返回不重复播放） ==========
   (function playSplash() {
+    // 提前同步界面常量：版本号、自动刷新开关
+    fillAppVersion();
+    applyAutoRefresh();
     const splash = document.getElementById('splash');
     if (!splash) { init(); return; }
     if (sessionStorage.getItem('splash_played') === '1') {
@@ -1204,8 +1319,10 @@
       return;
     }
     sessionStorage.setItem('splash_played', '1');
-    // 播放进入音效
-    try { sounds.splash.currentTime = 0; sounds.splash.play().catch(() => {}); } catch (_) {}
+    // 播放进入音效（尊重音效开关）
+    if (soundEnabled) {
+      try { sounds.splash.currentTime = 0; sounds.splash.play().catch(() => {}); } catch (_) {}
+    }
     // 展示约 1.4s 后淡出
     setTimeout(() => {
       splash.classList.add('is-done');

@@ -17,7 +17,15 @@ data class Account(
     val id: String,
     val name: String,
     val developerId: String? = null,
-    val partition: String = "persist:taptap"
+    val partition: String = "persist:taptap",
+    /** 账号（用户）昵称，来自 /api/user/v1/me */
+    val nickname: String? = null,
+    /** 账号（用户）头像 URL，来自 /api/user/v1/me */
+    val avatar: String? = null,
+    /** 开发者主体/工作室名称，来自 /api/developer/v1/list */
+    val developerName: String? = null,
+    /** 开发者主体/工作室 Logo URL，来自 /api/developer/v1/list */
+    val developerAvatar: String? = null
 )
 
 data class AccountConfig(
@@ -161,6 +169,40 @@ class AccountManager(private val context: Context) {
         cookieStore.putIfAbsent(newAcc.id, mutableListOf())
         saveConfig(config.copy(current = newAcc.id, accounts = config.accounts + newAcc))
         return AccountUpdate(developerId = developerId, isNew = true)
+    }
+
+    /**
+     * 更新某个账号的昵称/头像/开发者主体名/Logo。任意字段传 null 表示不更新该字段。
+     * 必须匹配 developerId（如果提供）以避免把数据写到错误账号。
+     */
+    fun updateAccountProfile(
+        accountId: String? = null,
+        developerId: String? = null,
+        nickname: String? = null,
+        avatar: String? = null,
+        developerName: String? = null,
+        developerAvatar: String? = null
+    ): Account? {
+        val config = loadConfig()
+        val targetId = accountId
+            ?: config.accounts.find { it.developerId == developerId }?.id
+            ?: config.current
+        var updated: Account? = null
+        val newAccounts = config.accounts.map { acc ->
+            if (acc.id != targetId) return@map acc
+            val merged = acc.copy(
+                nickname = nickname ?: acc.nickname,
+                avatar = avatar ?: acc.avatar,
+                developerName = developerName ?: acc.developerName,
+                developerAvatar = developerAvatar ?: acc.developerAvatar,
+                // 如果有 developerName 且当前 name 还是默认的 "TapTap xxx"，用更可读的名字覆盖
+                name = if (!developerName.isNullOrBlank() && acc.name.startsWith("TapTap ")) developerName else acc.name
+            )
+            updated = merged
+            merged
+        }
+        saveConfig(config.copy(accounts = newAccounts))
+        return updated
     }
 
     fun switchAccount(accountId: String): Boolean {

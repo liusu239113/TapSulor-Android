@@ -72,7 +72,16 @@
     onLoginCheck: function (callback) { window.__onLoginCheck = callback; },
     onAccountUpdated: function (callback) { window.__onAccountUpdated = callback; },
     onApisUpdated: function (callback) { window.__onApisUpdated = callback; },
-    onTrayRefresh: function () {}
+    onTrayRefresh: function () {},
+    /** 获取 APP 版本号（来自 BuildConfig.VERSION_NAME） */
+    getAppVersion: function () {
+      try { return AndroidBridge.getAppVersion ? AndroidBridge.getAppVersion() : ''; }
+      catch (e) { return ''; }
+    },
+    /** APP 从后台回到前台 / 冷启动完成时触发（强刷，全量 init） */
+    onAppResume: function (callback) { window.__onAppResume = callback; },
+    /** APP 在后台每 5 分钟触发一次（轻量刷新：仅拉 app list + revenue） */
+    onAppBackgroundTick: function (callback) { window.__onAppBackgroundTick = callback; }
   };
   window.dispatchEvent(new CustomEvent('electronAPIReady'));
 }());

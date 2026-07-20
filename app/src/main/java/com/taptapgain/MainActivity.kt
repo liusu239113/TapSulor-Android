@@ -2,6 +2,8 @@ package com.taptapgain
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.webkit.*
 import androidx.appcompat.app.AppCompatActivity
@@ -16,10 +18,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var accountManager: AccountManager
     private lateinit var apiClient: TapTapApiClient
 
+    // 后台定时刷新：onPause 启动，每 5 分钟触发一次轻量刷新（绕过 Chromium 后台节流）
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var hasResumedOnce = false
+    private val backgroundRefreshRunnable = object : Runnable {
+        override fun run() {
+            try {
+                webView.evaluateJavascript(
+                    "if(window.__onAppBackgroundTick)window.__onAppBackgroundTick();",
+                    null
+                )
+            } catch (_: Exception) {}
+            mainHandler.postDelayed(this, BACKGROUND_REFRESH_INTERVAL_MS)
+        }
+    }
+
     companion object {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val TAPTAP_REFERER = "https://developer.taptap.cn/"
+        private const val BACKGROUND_REFRESH_INTERVAL_MS = 5L * 60L * 1000L  // 5 分钟
         private val imageExtensions = arrayOf(
             ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".ico", ".bmp"
         )
@@ -27,6 +45,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableImmersiveMode()
         accountManager = AccountManager(this)
         apiClient = TapTapApiClient(accountManager)
         webView = WebView(this).apply outer@{
@@ -103,6 +122,42 @@ class MainActivity : AppCompatActivity() {
         if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 取消后台定时 tick，避免与前台刷新竞争
+        mainHandler.removeCallbacks(backgroundRefreshRunnable)
+        // 首次进入（冷启动）由 JS splash/init 流程自刷一次；之后每次回前台都强制刷一次
+        if (hasResumedOnce) {
+            try {
+                webView.evaluateJavascript(
+                    "if(window.__onAppResume)window.__onAppResume();",
+                    null
+                )
+            } catch (_: Exception) {}
+        } else {
+            hasResumedOnce = true
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // 退到后台：启动 5 分钟节拍器，轻量刷新数据
+        mainHandler.removeCallbacks(backgroundRefreshRunnable)
+        mainHandler.postDelayed(backgroundRefreshRunnable, BACKGROUND_REFRESH_INTERVAL_MS)
+    }
+
+    override fun onDestroy() {
+        mainHandler.removeCallbacks(backgroundRefreshRunnable)
+        webAppInterface.destroy()
+        webView.destroy()
+        super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enableImmersiveMode()
+    }
+
     /** 判断某个请求是不是需要代理的图片请求。 */
     private fun isImageRequest(url: String, request: WebResourceRequest): Boolean {
         if (!url.startsWith("http://") && !url.startsWith("https://")) return false
@@ -146,11 +201,5 @@ class MainActivity : AppCompatActivity() {
             url.endsWith(".ico", ignoreCase = true) -> "image/x-icon"
             else -> "image/*"
         }
-    }
-
-    override fun onDestroy() {
-        webAppInterface.destroy()
-        webView.destroy()
-        super.onDestroy()
     }
 }

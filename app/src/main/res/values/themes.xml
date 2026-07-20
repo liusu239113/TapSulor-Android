@@ -6,8 +6,10 @@
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">#00C4CD</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="android:statusBarColor">#F5F6F7</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <!-- 沉浸式全屏：状态栏与导航栏透明，由 Kotlin 侧 WindowInsetsController 隐藏系统栏 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

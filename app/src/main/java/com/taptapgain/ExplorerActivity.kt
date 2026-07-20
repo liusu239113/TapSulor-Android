@@ -10,6 +10,7 @@ class ExplorerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableImmersiveMode()
         webView = WebView(this).apply webView@{
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.apply {
@@ -30,5 +31,11 @@ class ExplorerActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enableImmersiveMode()
+    }
+
     override fun onDestroy() { webView.destroy(); super.onDestroy() }
 }

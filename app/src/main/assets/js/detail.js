@@ -714,7 +714,7 @@
     const isEst = false;
     const arpuPct = rec.revenue != null && rec.dau > 0 ? (rec.revenue / rec.dau * 100) : null;
     const heroValue = rec.revenue == null ? '暂无' : ('¥' + fmt(rec.revenue));
-    const heroLabel = rec.revenue == null ? '真实收益未同步' : '已结算收益';
+    const heroLabel = rec.revenue == null ? '真实收益未同步' : '广告收益';
     const convDisplay = arpuPct == null ? '—' : arpuPct.toFixed(1) + '%';
     const durVal = rec.durationAvg;
     const durDisplay = (durVal != null && durVal !== '' && durVal !== '-' && parseFloat(durVal) > 0) ? (durVal + '分') : '—';
@@ -752,7 +752,7 @@
 
     const body = document.getElementById('day-modal-body');
     const tip = (isToday && rec.revenue == null)
-      ? '<div class="dm-pending-tip">今日真实收益尚未结算，当前只展示已返回的活跃数据。</div>'
+      ? '<div class="dm-pending-tip">今日真实收益尚未同步，当前只展示已返回的活跃数据。</div>'
       : '';
     body.innerHTML = tip + bizSection + funnelSection;
 

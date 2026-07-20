@@ -37,6 +37,7 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableImmersiveMode()
         accountManager = AccountManager(this)
         apiClient = TapTapApiClient(accountManager)
         configureWebView()
@@ -275,6 +276,11 @@ class LoginActivity : AppCompatActivity() {
             setResult(Activity.RESULT_CANCELED)
             super.onBackPressed()
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enableImmersiveMode()
     }
 
     override fun onDestroy() {
