@@ -300,14 +300,6 @@
 
   // 探测累计总收入 + 最早有数据的月份（大范围一次性查询）
   async function probeGrandTotal() {
-    if (!isElectron) {
-      // 浏览器预览模式
-      grandTotal = null;
-      earliestMonth = currentMonthStr();
-      updateMonthTitle();
-      renderGrandTotal();
-      return;
-    }
     try {
       const data = await fetchGameRevenue(currentGame.appId, '2020-01-01', yesterdayStr());
       grandTotal = data.total != null ? data.total : null;
@@ -328,18 +320,6 @@
 
   // 获取游戏概览（昨日收入/昨日日活/本月收入 + 环比基准）
   async function fetchOverview() {
-    if (!isElectron) {
-      // 模拟
-      renderOverview({
-        yesterdayRevenue: null,
-        yesterdayDAU: null,
-        monthRevenue: null,
-        prevDayRevenue: null,
-        prevDayDAU: null,
-        lastMonthRevenue: null
-      });
-      return;
-    }
     const yesterday = yesterdayStr();
     const dayBefore = dayBeforeStr();
     const today = todayStr();
@@ -414,13 +394,6 @@
   }
 
   async function loadGameOverall() {
-    if (!isElectron) {
-      renderGameOverall({
-        retA1d: '23.15%', retA3d: '8.42%', retA7d: '3.11%',
-        startRate: '96.20%', durationAvg: 34
-      });
-      return;
-    }
     const m = await fetchGameOverallMetrics(currentGame.appId).catch(() => ({}));
     renderGameOverall(m);
   }
@@ -1088,13 +1061,7 @@
     grid.innerHTML = '<div class="loading-tip">加载中...</div>';
     renderMonthSummary(null);
     try {
-      if (isElectron) {
-        currentMonthData = await fetchMonthData(currentSelectedMonth);
-      } else {
-        // 浏览器预览模式：模拟数据
-        await new Promise(r => setTimeout(r, 250));
-        currentMonthData = generateMockMonthData(currentSelectedMonth);
-      }
+      currentMonthData = await fetchMonthData(currentSelectedMonth);
       renderAll(currentMonthData);
     } catch (e) {
       console.error('加载失败:', e);
@@ -1105,43 +1072,6 @@
         </div>
       `;
     }
-  }
-
-  // 浏览器预览模式：生成模拟月数据
-  function generateMockMonthData(yearMonth) {
-    const { start, end } = getMonthRange(yearMonth);
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const dailyList = [];
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = formatDate(d);
-      const revenue = Math.round(Math.random() * 15000) / 100;
-      const dau = Math.floor(Math.random() * 400) + 60;
-      const impression = Math.floor(Math.random() * 200000) + 20000;
-      const click = Math.floor(impression * (0.01 + Math.random() * 0.02));
-      const convDetail = Math.floor(click * (0.1 + Math.random() * 0.2));
-      const convTotal = Math.floor(convDetail * (1 + Math.random()));
-      dailyList.push({
-        date: dateStr,
-        revenue,
-        dau,
-        newUsers: Math.floor(dau * 0.1),
-        retA1d: (Math.random() * 25).toFixed(2) + '%',
-        retA3d: (Math.random() * 10).toFixed(2) + '%',
-        retA7d: (Math.random() * 5).toFixed(2) + '%',
-        startRate: (90 + Math.random() * 9).toFixed(2) + '%',
-        durationAvg: Math.floor(Math.random() * 60) + 10,
-        impression,
-        click,
-        clickRate: (click / impression * 100).toFixed(2) + '%',
-        convDetail,
-        convDetailRate: (convDetail / click * 100).toFixed(2) + '%',
-        convTotal
-      });
-    }
-    const monthTotal = dailyList.reduce((s, d) => s + d.revenue, 0);
-    const monthDau = dailyList.reduce((s, d) => s + d.dau, 0);
-    return { dailyList, monthTotal, monthDau };
   }
 
   // ========== 导出 CSV ==========
@@ -1229,9 +1159,7 @@
     updateMonthTitle();
     // 先获取 developer_id（支持多账号），再并发加载数据
     (async () => {
-      if (isElectron) {
-        DEVELOPER_ID = await window.electronAPI.getDeveloperId();
-      }
+      DEVELOPER_ID = await window.electronAPI.getDeveloperId();
       loadMonth();
       fetchOverview();
       loadGameOverall();

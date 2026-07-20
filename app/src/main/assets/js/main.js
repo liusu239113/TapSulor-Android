@@ -53,16 +53,9 @@
   }
 
   // ========== 数据缓存 ==========
-  // 历史数据（上月同期收入、累计总收入）天然不变，用日期范围作 key，无需 TTL
-  function cacheGet(key) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw == null ? null : JSON.parse(raw);
-    } catch (e) { return null; }
-  }
-  function cacheSet(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* 忽略 */ }
-  }
+  // 原版 Electron 不做永久缓存，所有数据每次都从后端实时拉取，确保日活/留存/转化/时长/收入与后台完全一致
+  function cacheGet(/*key*/) { return null; }
+  function cacheSet(/*key, value*/) { /* no-op */ }
 
   function formatDate(d) {
     const y = d.getFullYear();

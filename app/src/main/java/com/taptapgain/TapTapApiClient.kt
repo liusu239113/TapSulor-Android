@@ -1,9 +1,8 @@
 package com.taptapgain
 
-import android.os.Handler
-import android.os.Looper
-import android.webkit.CookieManager
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,38 +13,38 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-class TapTapApiClient {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+/**
+ * TapTap API client.
+ *
+ * Cookie handling mirrors the Electron original: every HTTP request goes through
+ * a CookieJar that reads/writes the *current account's* cookie store owned by
+ * [AccountManager], giving each account its own isolated session (equivalent to
+ * Electron's `session.fromPartition(partition)`).
+ *
+ * Developer identity classification mirrors `account-state.js` verbatim:
+ *   1. Hit `/api/user/v1/me`. On 401/403 -> unauthenticated. On network error -> error.
+ *   2. Pull `data.developer_id` / `data.developerId` / `data.developer.id` from /me.
+ *      If found -> ready.
+ *   3. Otherwise hit `/api/developer/v1/list`. On error -> error.
+ *      Collect `data.list[*].developer_id` / `developerId` / `id`.
+ *      If empty -> no-developer. Otherwise -> ready (prefer configured id if it matches).
+ */
+class TapTapApiClient(private val accountManager: AccountManager) {
+
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .followRedirects(true)
+        .followSslRedirects(true)
         .cookieJar(object : CookieJar {
             override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                val cookieManager = CookieManager.getInstance()
-                cookies.forEach { cookie ->
-                    val attributes = buildString {
-                        append(cookie.name).append('=').append(cookie.value)
-                        append("; Domain=").append(cookie.domain)
-                        append("; Path=").append(cookie.path)
-                        if (cookie.secure) append("; Secure")
-                    }
-                    cookieManager.setCookie("${url.scheme}://${url.host}", attributes)
-                }
-                Handler(Looper.getMainLooper()).post { cookieManager.flush() }
+                val accId = accountManager.getCurrentAccountId()
+                accountManager.addCookies(accId, url, cookies)
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                val raw = CookieManager.getInstance().getCookie(url.toString()) ?: return emptyList()
-                return raw.split(';').mapNotNull { part ->
-                    val pair = part.trim().split('=', limit = 2)
-                    if (pair.size != 2 || pair[0].isBlank()) return@mapNotNull null
-                    try {
-                        Cookie.Builder().name(pair[0].trim()).value(pair[1].trim())
-                            .domain(url.host).path("/").build()
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                val accId = accountManager.getCurrentAccountId()
+                return accountManager.getCookiesForUrl(accId, url)
             }
         })
         .build()
@@ -57,9 +56,13 @@ class TapTapApiClient {
         try {
             val request = Request.Builder()
                 .url(url)
-                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
-                .addHeader("Accept", "application/json, text/plain, */*")
-                .addHeader("Referer", "https://developer.taptap.cn/")
+                // Match Electron (Chromium desktop) User-Agent so TapTap returns the same
+                // responses as the original EXE.
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                )
+                .header("Accept", "application/json, text/plain, */*")
                 .build()
             client.newCall(request).execute().use { response ->
                 FetchResult(
@@ -74,108 +77,144 @@ class TapTapApiClient {
         }
     }
 
-    suspend fun checkLoginStatus(configuredDeveloperId: String? = null): CheckLoginResult {
-        val host = "developer.taptap.cn"
-        val me = fetch("https://$host/api/user/v1/me")
-        if (me.status == 401 || me.status == 403) return CheckLoginResult("unauthenticated", null)
-        if (!me.ok || me.status == 0) return CheckLoginResult("error", null, me.error ?: "network_error")
-
-        val allIds = linkedSetOf<String>()
-        allIds.addAll(extractDeveloperIds(me.body))
-
-        val listEndpoints = listOf(
-            "https://$host/api/developer/v1/list",
-            "https://$host/api/developer/v1/developers",
-            "https://$host/api/user/v1/developers"
-        )
-        var anyListSucceeded = false
-        for (url in listEndpoints) {
-            val result = fetch(url)
-            if (result.status == 401 || result.status == 403) continue
-            if (result.ok) {
-                anyListSucceeded = true
-                allIds.addAll(extractDeveloperIds(result.body))
-            }
-        }
-
-        val configured = normalizeId(configuredDeveloperId)
-        if (configured != null) {
-            val permission = fetch("https://$host/api/app/v2/list?developer_id=$configured&page=1&pagesize=1")
-            if (permission.ok && responseIsSuccessful(permission.body)) {
-                return CheckLoginResult("ready", configured)
-            }
-        }
-
-        if (allIds.isNotEmpty()) {
-            return CheckLoginResult("ready", configured?.takeIf { it in allIds } ?: allIds.first())
-        }
-
-        return if (anyListSucceeded) {
-            CheckLoginResult("identity-unresolved", null, "developer_identity_not_found")
-        } else {
-            CheckLoginResult("identity-unresolved", null, "developer_list_unavailable")
-        }
-    }
-
-    private fun responseIsSuccessful(body: String): Boolean {
+    /** Synchronous fetch used internally by checkLoginStatus. */
+    private fun fetchSync(url: String): FetchResult {
         return try {
-            val root = JsonParser.parseString(body)
-            !root.isJsonObject || !root.asJsonObject.has("success") || root.asJsonObject.get("success").asBoolean
-        } catch (_: Exception) {
-            true
-        }
-    }
-
-    private fun extractDeveloperIds(body: String): List<String> {
-        return try {
-            val ids = linkedSetOf<String>()
-            collectDeveloperIds(JsonParser.parseString(body), ids)
-            ids.toList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun collectDeveloperIds(element: JsonElement?, ids: MutableSet<String>) {
-        if (element == null || element.isJsonNull) return
-        if (element.isJsonArray) {
-            element.asJsonArray.forEach { collectDeveloperIds(it, ids) }
-            return
-        }
-        if (!element.isJsonObject) return
-
-        val obj = element.asJsonObject
-        listOf("developer_id", "developerId", "developerID").forEach { key ->
-            if (obj.has(key)) normalizeId(obj.get(key))?.let(ids::add)
-        }
-        if (obj.has("developer") && obj.get("developer").isJsonObject) {
-            val developer = obj.getAsJsonObject("developer")
-            if (developer.has("id")) normalizeId(developer.get("id"))?.let(ids::add)
-        }
-        obj.entrySet().forEach { (key, value) ->
-            if (key in setOf("data", "list", "items", "developers", "developer_list", "developerList", "user", "result")) {
-                collectDeveloperIds(value, ids)
+            val request = Request.Builder()
+                .url(url)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                )
+                .header("Accept", "application/json, text/plain, */*")
+                .build()
+            client.newCall(request).execute().use { response ->
+                FetchResult(
+                    response.isSuccessful,
+                    response.code,
+                    response.body?.string() ?: "",
+                    if (response.isSuccessful) null else "HTTP ${response.code}"
+                )
             }
+        } catch (e: Exception) {
+            FetchResult(false, 0, "", e.message ?: "network_error")
         }
     }
 
-    private fun normalizeId(value: Any?): String? {
+    suspend fun checkLoginStatus(configuredDeveloperId: String? = null): CheckLoginResult =
+        withContext(Dispatchers.IO) {
+            val host = "https://developer.taptap.cn"
+
+            val meResponse = fetchSync("$host/api/user/v1/me")
+
+            // 401 / 403 -> not logged in
+            if (meResponse.status == 401 || meResponse.status == 403) {
+                return@withContext CheckLoginResult("unauthenticated", null)
+            }
+            // Network error / timeout
+            if (meResponse.status == 0 || meResponse.error != null) {
+                return@withContext CheckLoginResult("error", null, meResponse.error ?: "network_error")
+            }
+
+            val meJson = parseJson(meResponse.body)
+            val meDeveloperId = extractDeveloperIdFromMe(meJson)
+            if (meDeveloperId != null) {
+                return@withContext CheckLoginResult("ready", meDeveloperId)
+            }
+
+            // Fallback: developer list
+            val listResponse = fetchSync("$host/api/developer/v1/list")
+            if (listResponse.status == 0 || listResponse.error != null) {
+                return@withContext CheckLoginResult("error", null, listResponse.error ?: "identity_unavailable")
+            }
+            val listJson = parseJson(listResponse.body)
+            val ids = extractDeveloperIdsFromList(listJson)
+            if (ids.isEmpty()) {
+                return@withContext CheckLoginResult("no-developer", null)
+            }
+            val configuredId = normalizeDeveloperId(configuredDeveloperId)
+            val chosenId = if (configuredId != null && ids.contains(configuredId)) configuredId else ids[0]
+            CheckLoginResult("ready", chosenId)
+        }
+
+    // -------------------------------------------------------------------------
+    // account-state.js parity helpers
+    // -------------------------------------------------------------------------
+
+    private fun parseJson(body: String): JsonElement? {
+        return try {
+            if (body.isBlank()) null else JsonParser.parseString(body)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** data.developer_id ?? data.developerId ?? data.developer.id */
+    private fun extractDeveloperIdFromMe(root: JsonElement?): String? {
+        val data = root?.asJsonObjectOrNull()?.get("data") ?: return null
+        return extractDeveloperIdFromData(data)
+    }
+
+    /** data.list[*] -> (developer_id ?? developerId ?? id) */
+    private fun extractDeveloperIdsFromList(root: JsonElement?): List<String> {
+        val data = root?.asJsonObjectOrNull()?.get("data")?.asJsonObjectOrNull() ?: return emptyList()
+        val list = data.get("list")?.asJsonArrayOrNull() ?: return emptyList()
+        val seen = linkedSetOf<String>()
+        list.forEach { item ->
+            val id = extractDeveloperIdFromItem(item)
+            if (id != null) seen.add(id)
+        }
+        return seen.toList()
+    }
+
+    private fun extractDeveloperIdFromData(data: JsonElement?): String? {
+        val obj = data?.asJsonObjectOrNull() ?: return null
+        // Prefer developer_id / developerId on the data object itself.
+        normalizeDeveloperId(obj.get("developer_id"))?.let { return it }
+        normalizeDeveloperId(obj.get("developerId"))?.let { return it }
+        // Then data.developer.id.
+        val dev = obj.get("developer")?.asJsonObjectOrNull()
+        if (dev != null) {
+            normalizeDeveloperId(dev.get("id"))?.let { return it }
+        }
+        return null
+    }
+
+    private fun extractDeveloperIdFromItem(item: JsonElement?): String? {
+        val obj = item?.asJsonObjectOrNull() ?: return null
+        normalizeDeveloperId(obj.get("developer_id"))?.let { return it }
+        normalizeDeveloperId(obj.get("developerId"))?.let { return it }
+        normalizeDeveloperId(obj.get("id"))?.let { return it }
+        return null
+    }
+
+    private fun normalizeDeveloperId(value: Any?): String? {
         if (value == null) return null
         if (value is JsonElement) {
+            if (value.isJsonNull) return null
             if (!value.isJsonPrimitive) return null
-            val primitive = value.asJsonPrimitive
+            val p = value.asJsonPrimitive
             return when {
-                primitive.isString -> normalizeId(primitive.asString)
-                primitive.isNumber -> try { primitive.asBigDecimal.stripTrailingZeros().toPlainString().takeIf { it.all(Char::isDigit) } } catch (_: Exception) { null }
+                p.isNumber -> try {
+                    p.asBigDecimal.stripTrailingZeros().toPlainString().takeIf { it.all(Char::isDigit) }
+                } catch (_: Exception) { null }
+                p.isString -> normalizeDeveloperId(p.asString)
                 else -> null
             }
         }
-        if (value is Number) return value.toLong().toString().takeIf { it.all(Char::isDigit) }
+        if (value is Number) return value.toLong().toString()
         val raw = value.toString().trim()
         return when {
-            raw.all(Char::isDigit) && raw.isNotEmpty() -> raw
+            raw.isEmpty() -> null
+            raw.all(Char::isDigit) -> raw
             raw.matches(Regex("\\d+\\.0+")) -> raw.substringBefore('.')
             else -> null
         }
     }
+
+    private fun JsonElement.asJsonObjectOrNull(): JsonObject? =
+        if (isJsonObject) asJsonObject else null
+
+    private fun JsonElement.asJsonArrayOrNull(): JsonArray? =
+        if (isJsonArray) asJsonArray else null
 }
