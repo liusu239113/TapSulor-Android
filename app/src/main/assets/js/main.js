@@ -215,22 +215,16 @@
       overlay = document.createElement('div');
       overlay.id = 'login-overlay';
       overlay.style.cssText = `
-        position: fixed; inset: 0; background: rgba(245,246,247,0.95);
-        z-index: 9999; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; padding: 32px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        position: fixed; inset: 0; z-index: 9999;
       `;
       overlay.innerHTML = `
-        <div style="text-align:center; max-width: 320px;">
-          <div style="width:72px;height:72px;margin:0 auto 20px;border-radius:18px;overflow:hidden;">
-            <img src="app-icon.png" style="width:100%;height:100%;object-fit:cover;" alt="TapTapGain">
-          </div>
-          <h2 id="login-title" style="font-size:20px;color:#1f2937;margin:0 0 12px;"></h2>
-          <p id="login-msg" style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px;"></p>
-          <button id="login-btn" style="
-            background:#00C4CD;color:#fff;border:none;padding:12px 32px;
-            border-radius:24px;font-size:15px;font-weight:600;cursor:pointer;
-          "></button>
+        <div class="login-shell">
+          <div class="login-terminal">&gt; SECURE SESSION REQUIRED_</div>
+          <div class="login-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <h2 id="login-title"></h2>
+          <p id="login-msg"></p>
+          <div class="login-points"><span><b>01</b> 安全会话</span><span><b>02</b> 收益读取</span></div>
+          <button id="login-btn"></button>
         </div>
       `;
       document.body.appendChild(overlay);
@@ -751,12 +745,10 @@
     renderAll();
 
     if (!isElectron) {
-      // 浏览器预览模式
+      const boot = document.getElementById('auth-boot');
+      if (boot) boot.remove();
       document.getElementById('game-list').innerHTML = `
-        <div class="empty-state">
-          <p style="color:#6b7280;font-size:14px;">浏览器预览模式</p>
-          <p style="color:#9ca3af;font-size:12px;margin-top:8px;">请用 Electron 启动以获取真实数据</p>
-        </div>
+        <div class="empty-state"><p>APP HOST REQUIRED</p><p>请从 Android 应用进入收益控制台</p></div>
       `;
       return;
     }
@@ -764,11 +756,13 @@
     // 先由主进程根据当前 Session 识别并持久化真实开发者身份，再构造数据 URL。
     // 旧版本顺序相反，会先拿到写死的默认 ID，导致其他用户访问无权查看的开发者空间。
     const identity = await window.electronAPI.checkLogin();
+    const boot = document.getElementById('auth-boot');
+    if (boot) boot.remove();
     if (!identity || identity.status === 'unauthenticated') {
-      showLoginOverlay('需要登录 TapTap 开发者后台后才能获取收入数据', {
+      showLoginOverlay('首次进入必须连接一个拥有开发者权限的 TapTap 账号。登录成功后才会打开收益控制台。', {
         action: 'login',
-        title: '登录 TapTap 开发者后台',
-        button: '立即登录'
+        title: '连接开发者账号',
+        button: '开始安全登录'
       });
       return;
     }
@@ -799,9 +793,15 @@
 
     DEVELOPER_ID = await window.electronAPI.getDeveloperId();
     if (!DEVELOPER_ID) {
-      showLoginOverlay('已登录，但未找到可访问的 TapTap 开发者账号');
+      showLoginOverlay('请先连接一个拥有开发者权限的 TapTap 账号，完成后才能进入收益控制台。', {
+        action: 'login', title: '连接首个开发者账号', button: '前往安全登录'
+      });
       return;
     }
+    const activeName = document.getElementById('active-account-name');
+    const activeId = document.getElementById('active-account-id');
+    if (activeName) activeName.textContent = `TapTap ${DEVELOPER_ID}`;
+    if (activeId) activeId.textContent = `DEVELOPER ID / ${DEVELOPER_ID}`;
     APP_LIST_URL = `${API_BASE}/app/v2/list?developer_id=${encodeURIComponent(DEVELOPER_ID)}&page=1&pagesize=100`;
 
     hideLoginOverlay();
@@ -1112,6 +1112,8 @@
     settingsModal.hidden = true;
   }
   if (settingsBtn) {
+    const accountManageBtn = document.getElementById('account-manage-btn');
+    if (accountManageBtn) accountManageBtn.addEventListener('click', openSettings);
     settingsBtn.addEventListener('click', openSettings);
     settingsOverlay.addEventListener('click', closeSettings);
     settingsClose.addEventListener('click', closeSettings);

@@ -4,6 +4,8 @@ import android.webkit.CookieManager
 import android.os.Handler
 import android.os.Looper
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -54,8 +56,8 @@ class TapTapApiClient {
 
     data class FetchResult(val ok: Boolean, val status: Int, val body: String, val error: String?)
 
-    suspend fun fetch(url: String): FetchResult {
-        return try {
+    suspend fun fetch(url: String): FetchResult = withContext(Dispatchers.IO) {
+        try {
             val request = Request.Builder()
                 .url(url)
                 .addHeader("User-Agent", "TapTapGain/1.0.1 Android")

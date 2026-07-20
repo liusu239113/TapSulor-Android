@@ -8,12 +8,16 @@ import android.graphics.Bitmap
 import android.view.ViewGroup
 import android.webkit.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var accountManager: AccountManager
     private var checking = false
     private var finished = false
+    private var nativeCheckAttempts = 0
+    private val apiClient = TapTapApiClient()
 
     companion object {
         const val REQUEST_CODE_LOGIN = 1001
@@ -88,6 +92,20 @@ class LoginActivity : AppCompatActivity() {
     private fun scheduleLoginCheck(view: WebView?) {
         view ?: return
         view.postDelayed({ checkLogin(view) }, 900)
+        view.postDelayed({ checkLoginNatively() }, 1400)
+    }
+
+    private fun checkLoginNatively() {
+        if (finished || isFinishing || nativeCheckAttempts >= 12) return
+        nativeCheckAttempts++
+        lifecycleScope.launch {
+            val result = apiClient.checkLoginStatus()
+            if (result.status == "ready" && result.developerId != null) {
+                finishLogin(result.developerId)
+            } else if (!finished) {
+                webView.postDelayed({ checkLoginNatively() }, 1800)
+            }
+        }
     }
 
     private fun checkLogin(view: WebView) {

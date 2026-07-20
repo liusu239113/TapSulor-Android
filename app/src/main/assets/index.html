@@ -2,183 +2,121 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TapTapGain</title>
-  <link rel="icon" href="app-icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0F0F23">
+  <title>收益像素站</title>
   <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/pixelforge.css">
 </head>
 <body>
+  <div id="auth-boot"><div class="boot-box"><div class="boot-cursor"></div><strong>VERIFYING SESSION</strong><span>正在验证开发者账号...</span></div></div>
   <div class="app">
-    <!-- 顶部栏 -->
     <header class="topbar">
       <div class="topbar-left">
-        <div class="logo">
-          <img src="app-icon.png" alt="TapTapGain" onerror="this.style.display='none'">
+        <div class="pixel-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="brand-copy">
+          <span class="eyebrow">AD REVENUE CONSOLE</span>
+          <h1>收益像素站</h1>
         </div>
-        <h1>TapTapGain</h1>
       </div>
       <div class="topbar-right">
-        <button class="icon-btn" title="刷新" id="refresh-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-          </svg>
+        <button class="icon-btn" title="同步数据" id="refresh-btn" aria-label="同步数据">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 9A8 8 0 0 0 6.2 5.5L4 10M4 15a8 8 0 0 0 13.8 3.5L20 14"/></svg>
         </button>
-        <button class="icon-btn" title="设置" id="settings-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
+        <button class="icon-btn" title="账号与设置" id="settings-btn" aria-label="账号与设置">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- 汇总卡片：累计总收入（大）+ 今日预估 + 昨日收入 + 本月收入 -->
-    <div class="summary-total-banner" id="summary-total-banner">
-      <div class="summary-total-label">所有游戏累计总收入</div>
+    <section class="account-console">
+      <div class="console-copy">
+        <span class="console-kicker">CURRENT OPERATOR</span>
+        <strong id="active-account-name">正在识别账号...</strong>
+        <span id="active-account-id">连接 TapTap 开发者中心</span>
+      </div>
+      <button class="console-manage" type="button" id="account-manage-btn">管理账号 &gt;</button>
+    </section>
+
+    <section class="summary-total-banner" id="summary-total-banner">
+      <div class="summary-scanline"></div>
+      <div class="summary-total-label">全账号当前视图 / 累计广告收益</div>
       <div class="summary-total-amount" id="summary-total">¥0.00</div>
-      <div class="summary-total-meta" id="summary-total-meta">-</div>
-    </div>
+      <div class="summary-total-meta" id="summary-total-meta">等待数据同步</div>
+      <div class="summary-status"><span></span> SESSION ONLINE</div>
+    </section>
+
     <div class="summary-grid">
       <div class="summary-card summary-estimate">
-        <div class="summary-row">
-          <div class="summary-label">今日预估</div>
-        </div>
+        <div class="summary-label">今日预估</div>
         <div class="summary-amount" id="summary-estimate">¥0.00</div>
+        <small>LIVE ESTIMATE</small>
       </div>
       <div class="summary-card summary-today">
-        <div class="summary-row">
-          <div class="summary-label" id="summary-today-label">昨日收入</div>
-        </div>
+        <div class="summary-label" id="summary-today-label">昨日收入</div>
         <div class="summary-amount" id="summary-today">¥0.00</div>
+        <small>YESTERDAY</small>
       </div>
       <div class="summary-card summary-month">
-        <div class="summary-row">
-          <div class="summary-label">本月收入</div>
-        </div>
+        <div class="summary-label">本月收入</div>
         <div class="summary-amount" id="summary-month">¥0.00</div>
+        <small>THIS MONTH</small>
       </div>
     </div>
 
-    <!-- 本月目标进度（独立板块） -->
     <div class="month-goal-section" id="month-goal-section" hidden>
-      <div class="month-goal-header">
-        <span class="month-goal-title">本月目标</span>
-        <span class="month-goal-value" id="month-goal-value">¥0</span>
-      </div>
-      <div class="month-goal-bar">
-        <div class="month-goal-fill" id="month-goal-fill"></div>
-      </div>
+      <div class="month-goal-header"><span class="month-goal-title">月度任务进度</span><span class="month-goal-value" id="month-goal-value">¥0</span></div>
+      <div class="month-goal-bar"><div class="month-goal-fill" id="month-goal-fill"></div></div>
       <div class="month-goal-text" id="month-goal-text">-</div>
     </div>
 
-    <!-- 游戏列表 -->
     <div class="section-title">
-      <span>我的游戏</span>
+      <div><span class="section-index">01</span><span>项目收益列表</span></div>
       <div class="section-right">
-        <label class="switch-wrap">
-          <input type="checkbox" id="toggle-unpublished">
-          <span class="switch-text">显示未发布</span>
-        </label>
+        <label class="switch-wrap"><input type="checkbox" id="toggle-unpublished"><span class="switch-text">包含未发布</span></label>
         <span class="game-count" id="game-count">0 个</span>
       </div>
     </div>
-    <div class="game-list" id="game-list">
-      <div class="loading-tip">加载中...</div>
-    </div>
+    <div class="game-list" id="game-list"><div class="loading-tip">LOADING DATA...</div></div>
 
-    <!-- API 探测结果 -->
     <div class="api-panel" id="api-panel">
       <div class="api-panel-header">
-        <span class="api-panel-title">已捕获 API <span class="api-count-badge" id="api-count">0</span></span>
+        <span class="api-panel-title">API DEBUG <span class="api-count-badge" id="api-count">0</span></span>
         <div class="api-panel-actions">
-          <button class="api-action-btn primary" id="api-replay-btn">重放关键API并保存</button>
-          <button class="api-action-btn" id="api-open-btn">打开探测窗口</button>
+          <button class="api-action-btn primary" id="api-replay-btn">重放并保存</button>
+          <button class="api-action-btn" id="api-open-btn">探测后台</button>
           <button class="api-action-btn" id="api-clear-btn">清空</button>
         </div>
       </div>
-      <div class="api-list" id="api-list">
-        <div class="api-empty">点击"打开探测窗口"，在弹出的后台页面中浏览数据，API 会自动捕获</div>
-      </div>
+      <div class="api-list" id="api-list"><div class="api-empty">打开探测窗口后，网络记录将在此显示</div></div>
     </div>
 
-    <footer class="app-footer">
-      <span>TapTapGain v1.0.1</span>
-    </footer>
+    <footer class="app-footer"><span>PIXEL REVENUE CONSOLE / v1.1</span></footer>
 
-    <!-- 设置面板 -->
     <div class="settings-modal" id="settings-modal" hidden>
       <div class="settings-overlay" id="settings-overlay"></div>
       <div class="settings-panel">
         <div class="settings-header">
-          <h2>设置</h2>
-          <button class="settings-close" id="settings-close" title="关闭">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <div><span>CONTROL PANEL</span><h2>账号与设置</h2></div>
+          <button class="settings-close" id="settings-close" title="关闭">×</button>
         </div>
         <div class="settings-body">
-          <div class="settings-item settings-item-column">
-            <div class="settings-item-text">
-              <div class="settings-item-title">账号管理</div>
-              <div class="settings-item-desc">已保存的 TapTap 开发者账号；添加新账号时会自动识别登录后的开发者 ID</div>
-            </div>
+          <div class="settings-block account-block">
+            <div class="settings-item-text"><div class="settings-item-title">开发者账号仓库</div><div class="settings-item-desc">每个账号保存独立登录会话，切换后自动刷新收益数据</div></div>
             <div class="account-list" id="account-list"></div>
-            <button class="account-add-btn" id="account-add-btn">+ 添加账号</button>
-            <div class="account-add-hint" id="account-add-hint">打开登录窗口，登录成功后将自动保存该账号</div>
+            <button class="account-add-btn" id="account-add-btn">+ 接入其他账号</button>
+            <div class="account-add-hint" id="account-add-hint">请在打开的 TapTap 页面完成登录</div>
           </div>
           <div class="settings-divider"></div>
-          <div class="settings-item">
-            <div class="settings-item-text">
-              <div class="settings-item-title">深色模式</div>
-              <div class="settings-item-desc">夜间使用更护眼</div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="setting-dark">
-              <span class="switch-slider"></span>
-            </label>
-          </div>
+          <div class="settings-item"><div class="settings-item-text"><div class="settings-item-title">夜间像素模式</div><div class="settings-item-desc">PixelForge 高对比深色界面</div></div><label class="switch"><input type="checkbox" id="setting-dark"><span class="switch-slider"></span></label></div>
           <div class="settings-divider"></div>
-          <div class="settings-item">
-            <div class="settings-item-text">
-              <div class="settings-item-title">API 探测面板</div>
-              <div class="settings-item-desc">开发者调试用，显示已捕获的后台 API</div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="setting-explorer">
-              <span class="switch-slider"></span>
-            </label>
-          </div>
+          <div class="settings-item"><div class="settings-item-text"><div class="settings-item-title">API 调试模块</div><div class="settings-item-desc">显示后台请求探测工具</div></div><label class="switch"><input type="checkbox" id="setting-explorer"><span class="switch-slider"></span></label></div>
           <div class="settings-divider"></div>
-          <div class="settings-item">
-            <div class="settings-item-text">
-              <div class="settings-item-title">自动刷新</div>
-              <div class="settings-item-desc">每 5 分钟自动刷新今日预估与日活</div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="setting-autorefresh">
-              <span class="switch-slider"></span>
-            </label>
-          </div>
+          <div class="settings-item"><div class="settings-item-text"><div class="settings-item-title">自动同步</div><div class="settings-item-desc">每 5 分钟刷新实时收益</div></div><label class="switch"><input type="checkbox" id="setting-autorefresh"><span class="switch-slider"></span></label></div>
           <div class="settings-divider"></div>
-          <div class="settings-item settings-item-column">
-            <div class="settings-item-text">
-              <div class="settings-item-title">月度目标</div>
-              <div class="settings-item-desc">设置本月收入目标，首页本月卡片显示进度</div>
-            </div>
-            <div class="settings-goal-input">
-              <span class="settings-goal-prefix">¥</span>
-              <input type="number" id="setting-month-goal" min="0" step="100" placeholder="0">
-              <button class="settings-goal-save" id="setting-month-goal-save">保存</button>
-            </div>
-          </div>
+          <div class="settings-block"><div class="settings-item-text"><div class="settings-item-title">月度收益目标</div><div class="settings-item-desc">设置首页任务进度</div></div><div class="settings-goal-input"><span class="settings-goal-prefix">¥</span><input type="number" id="setting-month-goal" min="0" step="100" placeholder="0"><button class="settings-goal-save" id="setting-month-goal-save">保存</button></div></div>
           <div class="settings-divider"></div>
-          <div class="settings-about">
-            <div class="settings-about-title">关于</div>
-            <div class="settings-about-row"><span>版本</span><span>TapTapGain v1.0.1</span></div>
-          </div>
+          <div class="settings-about"><div class="settings-about-title">SYSTEM</div><div class="settings-about-row"><span>版本</span><span>1.1 / ANDROID</span></div></div>
         </div>
       </div>
     </div>
