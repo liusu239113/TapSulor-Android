@@ -45,6 +45,14 @@
       });
     },
     getDeveloperId: function () { return AndroidBridge.getDeveloperId(); },
+    getStudios: function () {
+      try { return JSON.parse(AndroidBridge.getStudios()); } catch (e) { return []; }
+    },
+    getActiveDeveloperId: function () {
+      try { return AndroidBridge.getActiveDeveloperId ? AndroidBridge.getActiveDeveloperId() : AndroidBridge.getDeveloperId(); }
+      catch (e) { return AndroidBridge.getDeveloperId(); }
+    },
+    switchStudio: function (developerId) { return AndroidBridge.switchStudio(developerId); },
     openLogin: function (mode) { AndroidBridge.openLogin(mode || null); },
     getAccounts: function () { return JSON.parse(AndroidBridge.getAccounts()); },
     switchAccount: function (id) { return AndroidBridge.switchAccount(id); },
@@ -71,6 +79,7 @@
     onLoginSuccess: function (callback) { window.__onLoginSuccess = callback; },
     onLoginCheck: function (callback) { window.__onLoginCheck = callback; },
     onAccountUpdated: function (callback) { window.__onAccountUpdated = callback; },
+    onStudioSwitched: function (callback) { window.__onStudioSwitched = callback; },
     onApisUpdated: function (callback) { window.__onApisUpdated = callback; },
     onTrayRefresh: function () {},
     /** 获取 APP 版本号（来自 BuildConfig.VERSION_NAME） */

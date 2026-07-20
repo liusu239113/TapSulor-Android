@@ -40,14 +40,15 @@
     </header>
 
     <!-- ===== 操作员条 ===== -->
-    <section class="operator-strip">
+    <section class="operator-strip" id="operator-strip">
       <img class="op-avatar" id="active-account-avatar" src="app-icon.png" alt="" hidden>
       <div class="op-left">
         <span class="op-kicker">运营主体</span>
         <strong id="active-account-name">正在识别账号...</strong>
         <span id="active-account-id" class="op-mono">连接 TapTap 开发者中心</span>
       </div>
-      <button class="op-manage" type="button" id="account-manage-btn">切换 ▸</button>
+      <button class="op-manage" type="button" id="studio-switch-btn" aria-haspopup="listbox" aria-expanded="false">切换工作室 ▾</button>
+      <div class="studio-dropdown" id="studio-dropdown" role="listbox" hidden></div>
     </section>
 
     <!-- ===== 三宫格数据瓦片（取代原来的大横幅 + 两卡片）===== -->

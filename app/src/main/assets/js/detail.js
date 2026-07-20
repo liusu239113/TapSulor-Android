@@ -21,8 +21,21 @@
 (function () {
   'use strict';
 
-  // 主题同步（设置在首页，存 localStorage）
-  document.documentElement.setAttribute('data-theme', 'dark');
+  // 主题同步（设置在首页，存 localStorage；与主界面读取同一键）
+  (function syncTheme() {
+    try {
+      const mode = localStorage.getItem('taptap_theme_mode') || 'light';
+      const accent = localStorage.getItem('taptap_theme_accent') || 'cyan';
+      const root = document.documentElement;
+      root.setAttribute('data-theme', mode);
+      root.setAttribute('data-accent', accent);
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) {
+        const map = { cyan: '#25B6E9', pink: '#FF7FB3', purple: '#8B7CF6', mint: '#36C9A0' };
+        meta.setAttribute('content', mode === 'dark' ? '#141820' : (map[accent] || '#25B6E9'));
+      }
+    } catch (_) {}
+  })();
 
   const API_BASE = 'https://developer.taptap.cn/api';
   const REVENUE_URL = `${API_BASE}/mini-app/v1/ad/payout-report-data`;
@@ -326,14 +339,18 @@
     const monthStart = monthStartStr();
     const lmRange = lastMonthSameDayRange();
 
-    // 并发：近2天收入 / 近2天 DAU / 本月收入 / 上月同期收入
-    const [rev2d, dau2dMap, monthRev, lastMonthRev] = await Promise.all([
+    // 并发：近2天收入 / 近2天 DAU / 近2天曝光 / 本月收入 / 上月同期收入
+    const [rev2d, dau2dMap, imp2dMap, monthRev, lastMonthRev] = await Promise.all([
       fetchGameRevenue(currentGame.appId, dayBefore, yesterday).catch(e => {
         console.warn('近2天收入获取失败:', e.message);
         return { ok: false, total: null, list: [], error: e.message };
       }),
       fetchGameDAURange(currentGame.appId, dayBefore, yesterday).catch(e => {
         console.warn('近2天 DAU 获取失败:', e.message);
+        return {};
+      }),
+      fetchGamePositionRange(currentGame.appId, dayBefore, yesterday).catch(e => {
+        console.warn('近2天曝光获取失败:', e.message);
         return {};
       }),
       fetchGameRevenue(currentGame.appId, monthStart, today).catch(e => {
@@ -359,13 +376,22 @@
     const yesterdayDAU = (dau2dMap[yesterday] && dau2dMap[yesterday].dau) || 0;
     const prevDayDAU = (dau2dMap[dayBefore] && dau2dMap[dayBefore].dau) || null;
 
+    // 从近2天曝光 map 取昨天和前天
+    const yImp = imp2dMap[yesterday];
+    const dImp = imp2dMap[dayBefore];
+    const yesterdayImp = yImp ? (yImp.impression || 0) : 0;
+    const prevDayImp = dImp ? (dImp.impression || 0) : null;
+    const yesterdayClick = yImp ? (yImp.click || 0) : 0;
+    const yesterdayClickRate = yImp && yImp.clickRate != null ? yImp.clickRate : null;
+
     const monthRevenue = monthRev.ok === false ? null : monthRev.total;
     const monthRevenueList = monthRev.ok === false ? [] : (monthRev.list || []);
     const lastMonthRevenue = lastMonthRev.total;
 
     renderOverview({
-      yesterdayRevenue, yesterdayDAU, monthRevenue, monthRevenueList,
-      prevDayRevenue, prevDayDAU, lastMonthRevenue
+      yesterdayRevenue, yesterdayDAU, yesterdayImp, yesterdayClick, yesterdayClickRate,
+      monthRevenue, monthRevenueList,
+      prevDayRevenue, prevDayDAU, prevDayImp, lastMonthRevenue
     });
   }
 
@@ -575,6 +601,22 @@
     document.getElementById('ov-yesterday-dau').textContent = fmtInt(data.yesterdayDAU);
     const conv = data.yesterdayRevenue != null && data.yesterdayDAU > 0 ? (data.yesterdayRevenue / data.yesterdayDAU * 100) : null;
     document.getElementById('ov-conversion').textContent = conv == null ? '转化率 —' : '转化率 ' + conv.toFixed(1) + '%';
+
+    // 昨日曝光
+    const impEl = document.getElementById('ov-yesterday-imp');
+    if (impEl) impEl.textContent = data.yesterdayImp == null ? '—' : fmtInt(data.yesterdayImp);
+    const clickRateEl = document.getElementById('ov-click-rate');
+    if (clickRateEl) {
+      const cr = data.yesterdayClickRate;
+      let rateText = '点击率 —';
+      if (cr != null) {
+        rateText = '点击率 ' + (Number(cr) * 100).toFixed(2) + '%';
+      } else if (data.yesterdayImp > 0 && data.yesterdayClick != null) {
+        rateText = '点击率 ' + (data.yesterdayClick / data.yesterdayImp * 100).toFixed(2) + '%';
+      }
+      clickRateEl.textContent = rateText;
+    }
+
     document.getElementById('ov-month-rev').textContent = data.monthRevenue == null ? '暂无' : '¥' + fmt(data.monthRevenue);
 
     // 本月日均 + 月末预估
@@ -595,9 +637,11 @@
     // 环比标签
     const momRevEl = document.getElementById('mom-ov-rev');
     const momDauEl = document.getElementById('mom-ov-dau');
+    const momImpEl = document.getElementById('mom-ov-imp');
     const momMonthEl = document.getElementById('mom-ov-month');
     if (momRevEl) momRevEl.innerHTML = momTagHTML(data.yesterdayRevenue, data.prevDayRevenue);
     if (momDauEl) momDauEl.innerHTML = momTagHTML(data.yesterdayDAU, data.prevDayDAU);
+    if (momImpEl) momImpEl.innerHTML = momTagHTML(data.yesterdayImp, data.prevDayImp);
     if (momMonthEl) momMonthEl.innerHTML = momTagHTML(data.monthRevenue, data.lastMonthRevenue);
   }
 

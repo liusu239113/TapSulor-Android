@@ -36,14 +36,17 @@ class WebAppInterface(
             if (result.status == "ready" && result.developerId != null) {
                 accountManager.setDeveloperId(result.developerId, addMode = false)
                 accountManager.captureCurrentSessionCookies()
-                // 写入昵称/头像/开发者主体名/Logo（新字段为 null 时不覆盖已有值）
+                // 写入昵称/头像/开发者主体名/Logo/工作室列表
                 result.profile?.let { p ->
+                    val studioRefs = result.studios.map { StudioRef(id = it.id, name = it.name, logo = it.logo) }
                     accountManager.updateAccountProfile(
                         developerId = result.developerId,
                         nickname = p.nickname,
                         avatar = p.avatar,
                         developerName = p.developerName,
-                        developerAvatar = p.developerAvatar
+                        developerAvatar = p.developerAvatar,
+                        studios = studioRefs,
+                        activeDeveloperId = result.developerId
                     )
                 }
             }
@@ -52,7 +55,8 @@ class WebAppInterface(
                     "status" to result.status,
                     "developerId" to result.developerId,
                     "error" to result.error,
-                    "profile" to result.profile
+                    "profile" to result.profile,
+                    "studios" to result.studios
                 )
             )
             webView.post { webView.evaluateJavascript("window.__pendingLoginResolve(${jsString(payload)})", null) }
@@ -60,6 +64,19 @@ class WebAppInterface(
     }
 
     @JavascriptInterface fun getDeveloperId(): String? = accountManager.getDeveloperId()
+
+    @JavascriptInterface fun getStudios(): String = gson.toJson(accountManager.getStudios())
+
+    @JavascriptInterface fun getActiveDeveloperId(): String? = accountManager.getActiveDeveloperId()
+
+    @JavascriptInterface fun switchStudio(developerId: String): Boolean {
+        val changed = accountManager.switchStudio(developerId)
+        if (changed) {
+            webView.post { webView.evaluateJavascript("if(window.__onStudioSwitched)window.__onStudioSwitched(${jsString(developerId)})", null) }
+            webView.post { webView.reload() }
+        }
+        return changed
+    }
 
     /** 暴露 APP 版本号给 Web 端（来自 BuildConfig.VERSION_NAME，与 build.gradle.kts 同步） */
     @JavascriptInterface fun getAppVersion(): String = BuildConfig.VERSION_NAME

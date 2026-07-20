@@ -142,7 +142,7 @@ button{border-radius:0!important}
 .brand-logo{width:38px;height:38px;display:block;object-fit:contain;image-rendering:pixelated;border-radius:0;background:transparent;box-shadow:none;flex-shrink:0}
 
 /* ============ 操作员信息条 ============ */
-.operator-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;margin-bottom:10px;background:var(--bg-card);border:2px solid var(--border-light);border-left:6px solid var(--secondary);box-shadow:var(--shadow-card);position:relative;overflow:hidden}
+.operator-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;margin-bottom:10px;background:var(--bg-card);border:2px solid var(--border-light);border-left:6px solid var(--secondary);box-shadow:var(--shadow-card);position:relative}
 .operator-strip::before{content:"";position:absolute;left:-30px;top:-30px;width:60px;height:60px;background:repeating-linear-gradient(45deg,transparent 0 6px,rgba(148,160,174,.06) 6px 7px);pointer-events:none}
 .op-left{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 /* 操作员头像（工作室 Logo / 用户头像） */
@@ -152,9 +152,24 @@ button{border-radius:0!important}
 .op-manage{flex:none;padding:8px 11px;border:2px solid var(--border-strong);background:var(--bg-muted);color:var(--text-primary);font-family:PixelMono,monospace;font-size:10px;letter-spacing:1px;box-shadow:2px 2px 0 var(--border-strong);cursor:pointer;transition:all .12s}
 .op-manage:hover{background:var(--accent);color:#fff;border-color:var(--accent-strong);box-shadow:3px 3px 0 var(--border-strong)}
 .op-manage:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--border-strong)}
+.op-manage.is-open{background:var(--accent);color:#fff;border-color:var(--accent-strong)}
 
-/* ============ 数据统计卡组（stat-deck，3 列瓦片） ============ */
-.stat-deck{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8px;margin-bottom:12px}
+/* 工作室切换下拉 */
+.studio-dropdown{position:absolute;top:calc(100% + 4px);right:12px;min-width:220px;max-width:300px;max-height:280px;overflow-y:auto;background:var(--bg-card);border:2px solid var(--border-strong);box-shadow:4px 4px 0 var(--border-strong);z-index:50;padding:4px}
+.studio-dropdown[hidden]{display:none}
+.studio-item{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border:2px solid transparent;transition:all .1s}
+.studio-item:hover{background:var(--bg-muted);border-color:var(--border-light)}
+.studio-item.is-active{background:var(--accent-soft);border-color:var(--accent)}
+.studio-item.is-active::after{content:"✓";margin-left:auto;font-family:PixelMono,monospace;font-size:10px;color:var(--accent);font-weight:bold}
+.studio-item-avatar{flex:none;width:28px;height:28px;object-fit:cover;border:2px solid var(--border-strong);background:var(--bg-muted);image-rendering:auto}
+.studio-item-avatar-placeholder{flex:none;width:28px;height:28px;border:2px solid var(--border-strong);background:var(--bg-muted);display:flex;align-items:center;justify-content:center;font-family:PixelMono,monospace;font-size:10px;color:var(--text-tertiary)}
+.studio-item-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.studio-item-name{font-size:12px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.studio-item-id{font-family:PixelMono,monospace;font-size:8px;color:var(--text-tertiary);letter-spacing:.5px}
+.studio-dropdown-empty{padding:12px;text-align:center;font-size:11px;color:var(--text-tertiary);font-family:PixelMono,monospace}
+
+/* ============ 数据统计卡组（stat-deck，4 列瓦片：收益/日活/曝光/本月） ============ */
+.stat-deck{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.2fr;gap:8px;margin-bottom:12px}
 .stat-tile{position:relative;padding:11px 10px 10px;background:var(--bg-card);border:2px solid var(--border-light);box-shadow:var(--shadow-card);overflow:hidden;transition:all .12s}
 .stat-tile:hover{box-shadow:var(--shadow-hover);border-color:var(--accent)}
 .stat-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}

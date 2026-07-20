@@ -25,7 +25,18 @@ data class Account(
     /** 开发者主体/工作室名称，来自 /api/developer/v1/list */
     val developerName: String? = null,
     /** 开发者主体/工作室 Logo URL，来自 /api/developer/v1/list */
-    val developerAvatar: String? = null
+    val developerAvatar: String? = null,
+    /** 当前账号下可用的工作室/厂商身份列表 */
+    val studios: List<StudioRef> = emptyList(),
+    /** 当前选中的工作室 id（默认等于 developerId，切换后更新） */
+    val activeDeveloperId: String? = null
+)
+
+/** 简化的工作室引用（用于持久化，引用 TapTapApiClient.Studio 的子集） */
+data class StudioRef(
+    val id: String,
+    val name: String? = null,
+    val logo: String? = null
 )
 
 data class AccountConfig(
@@ -134,7 +145,35 @@ class AccountManager(private val context: Context) {
 
     fun getCurrentAccountId(): String = getCurrentAccount().id
 
-    fun getDeveloperId(): String? = getCurrentAccount().developerId
+    fun getDeveloperId(): String? {
+        val acc = getCurrentAccount()
+        return acc.activeDeveloperId ?: acc.developerId
+    }
+
+    /** 获取当前账号的工作室列表 */
+    fun getStudios(): List<StudioRef> = getCurrentAccount().studios
+
+    /** 获取当前激活的工作室 id */
+    fun getActiveDeveloperId(): String? = getDeveloperId()
+
+    /**
+     * 在当前账号内切换工作室（厂商身份）。
+     * 仅更新 activeDeveloperId 和显示用的 developerName/Logo，不切换 cookie。
+     */
+    fun switchStudio(developerId: String): Boolean {
+        val config = loadConfig()
+        val current = config.accounts.find { it.id == config.current } ?: return false
+        if (current.studios.none { it.id == developerId }) return false
+        val studio = current.studios.firstOrNull { it.id == developerId } ?: return false
+        val updated = current.copy(
+            activeDeveloperId = developerId,
+            developerName = studio.name ?: current.developerName,
+            developerAvatar = studio.logo ?: current.developerAvatar
+        )
+        val newAccounts = config.accounts.map { if (it.id == current.id) updated else it }
+        saveConfig(config.copy(accounts = newAccounts))
+        return true
+    }
 
     fun getAccountsPayload(): AccountConfig = loadConfig()
 
@@ -172,7 +211,7 @@ class AccountManager(private val context: Context) {
     }
 
     /**
-     * 更新某个账号的昵称/头像/开发者主体名/Logo。任意字段传 null 表示不更新该字段。
+     * 更新某个账号的昵称/头像/开发者主体名/Logo/工作室列表。任意字段传 null 表示不更新该字段。
      * 必须匹配 developerId（如果提供）以避免把数据写到错误账号。
      */
     fun updateAccountProfile(
@@ -181,7 +220,9 @@ class AccountManager(private val context: Context) {
         nickname: String? = null,
         avatar: String? = null,
         developerName: String? = null,
-        developerAvatar: String? = null
+        developerAvatar: String? = null,
+        studios: List<StudioRef>? = null,
+        activeDeveloperId: String? = null
     ): Account? {
         val config = loadConfig()
         val targetId = accountId
@@ -195,6 +236,8 @@ class AccountManager(private val context: Context) {
                 avatar = avatar ?: acc.avatar,
                 developerName = developerName ?: acc.developerName,
                 developerAvatar = developerAvatar ?: acc.developerAvatar,
+                studios = studios ?: acc.studios,
+                activeDeveloperId = activeDeveloperId ?: acc.activeDeveloperId,
                 // 如果有 developerName 且当前 name 还是默认的 "TapTap xxx"，用更可读的名字覆盖
                 name = if (!developerName.isNullOrBlank() && acc.name.startsWith("TapTap ")) developerName else acc.name
             )

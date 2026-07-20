@@ -1196,6 +1196,10 @@
         activeAvatar.hidden = true;
       }
     }
+    // 同步工作室切换按钮可见性（多工作室才显示）
+    if (typeof renderStudioDropdown === 'function') {
+      renderStudioDropdown();
+    }
   }
 
   // ========== 账号管理 ==========
@@ -1282,6 +1286,7 @@
 
   function openSettings() {
     if (!settingsModal) return;
+    closeStudioDropdown();
     settingsModal.hidden = false;
     renderAccountList();
   }
@@ -1289,10 +1294,119 @@
     if (!settingsModal) return;
     settingsModal.hidden = true;
   }
-  if (settingsBtn || document.getElementById('account-manage-btn')) {
-    const accountManageBtn = document.getElementById('account-manage-btn');
-    if (accountManageBtn) accountManageBtn.addEventListener('click', openSettings);
-    if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+
+  // ========== 工作室切换下拉 ==========
+  const studioSwitchBtn = document.getElementById('studio-switch-btn');
+  const studioDropdown = document.getElementById('studio-dropdown');
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  async function renderStudioDropdown() {
+    if (!studioDropdown || !isElectron) return;
+    let studios = [];
+    let activeId = null;
+    try {
+      if (window.electronAPI.getStudios) {
+        studios = await window.electronAPI.getStudios() || [];
+      }
+      if (window.electronAPI.getActiveDeveloperId) {
+        activeId = await window.electronAPI.getActiveDeveloperId();
+      }
+    } catch (e) {
+      console.warn('[studio] failed to fetch studios:', e);
+    }
+    if (!studios || studios.length <= 1) {
+      // 只有 0 或 1 个工作室时，隐藏切换按钮（无切换必要）
+      if (studioSwitchBtn) studioSwitchBtn.hidden = true;
+      studioDropdown.hidden = true;
+      if (studioSwitchBtn) studioSwitchBtn.classList.remove('is-open');
+      if (studioSwitchBtn) studioSwitchBtn.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    if (studioSwitchBtn) studioSwitchBtn.hidden = false;
+    if (!activeId) activeId = DEVELOPER_ID;
+    studioDropdown.innerHTML = studios.map(s => {
+      const name = escHtml(s.name || s.id || '未命名工作室');
+      const avatar = s.logo ? `<img class="studio-item-avatar" src="${escHtml(s.logo)}" alt="">`
+        : `<div class="studio-item-avatar-placeholder" aria-hidden="true">${(s.name || '?').charAt(0).toUpperCase()}</div>`;
+      const isActive = s.id === activeId;
+      return `<div class="studio-item ${isActive ? 'is-active' : ''}" role="option" data-id="${escHtml(s.id)}" aria-selected="${isActive}">
+        ${avatar}
+        <div class="studio-item-info">
+          <div class="studio-item-name">${name}</div>
+          <div class="studio-item-id">ID: ${escHtml(s.id)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function openStudioDropdown() {
+    if (!studioDropdown) return;
+    studioDropdown.hidden = false;
+    if (studioSwitchBtn) {
+      studioSwitchBtn.classList.add('is-open');
+      studioSwitchBtn.setAttribute('aria-expanded', 'true');
+    }
+    renderStudioDropdown();
+  }
+  function closeStudioDropdown() {
+    if (!studioDropdown) return;
+    studioDropdown.hidden = true;
+    if (studioSwitchBtn) {
+      studioSwitchBtn.classList.remove('is-open');
+      studioSwitchBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+  function toggleStudioDropdown() {
+    if (!studioDropdown) return;
+    if (studioDropdown.hidden) openStudioDropdown();
+    else closeStudioDropdown();
+  }
+
+  if (studioSwitchBtn) {
+    studioSwitchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleStudioDropdown();
+    });
+  }
+  if (studioDropdown) {
+    studioDropdown.addEventListener('click', async (e) => {
+      const item = e.target.closest('.studio-item');
+      if (!item) return;
+      const id = item.dataset.id;
+      if (!id) return;
+      playSfx('switch');
+      closeStudioDropdown();
+      try {
+        if (window.electronAPI.switchStudio) {
+          await window.electronAPI.switchStudio(id);
+          // 原生侧会触发 reload，不需要手动刷新
+        }
+      } catch (err) {
+        console.error('[studio] switch failed:', err);
+        alert('切换工作室失败：' + (err && err.message ? err.message : err));
+      }
+    });
+  }
+  // 点击外部关闭下拉
+  document.addEventListener('click', (e) => {
+    if (!studioDropdown || studioDropdown.hidden) return;
+    if (e.target.closest('#operator-strip')) return;
+    closeStudioDropdown();
+  });
+  // 切换完成后回调（安全网，reload 之前更新 UI）
+  if (isElectron && window.electronAPI.onStudioSwitched) {
+    window.electronAPI.onStudioSwitched(() => {
+      renderActiveAccountHeader();
+    });
+  }
+
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', openSettings);
     settingsOverlay.addEventListener('click', closeSettings);
     settingsClose.addEventListener('click', closeSettings);
     bindAccountEvents();
@@ -1344,7 +1458,14 @@
     }
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !settingsModal.hidden) closeSettings();
+      if (e.key === 'Escape') {
+        if (studioDropdown && !studioDropdown.hidden) {
+          closeStudioDropdown();
+          e.preventDefault();
+          return;
+        }
+        if (!settingsModal.hidden) closeSettings();
+      }
     });
   }
 

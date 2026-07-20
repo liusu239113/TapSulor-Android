@@ -60,11 +60,19 @@ class TapTapApiClient(private val accountManager: AccountManager) {
         val developerAvatar: String? = null
     )
 
+    /** 工作室/厂商身份（一个 TapTap 账号可能绑定多个 developer_id） */
+    data class Studio(
+        val id: String,
+        val name: String? = null,
+        val logo: String? = null
+    )
+
     data class CheckLoginResult(
         val status: String,
         val developerId: String?,
         val error: String? = null,
-        val profile: UserProfile? = null
+        val profile: UserProfile? = null,
+        val studios: List<Studio> = emptyList()
     )
 
     suspend fun fetch(url: String): FetchResult = withContext(Dispatchers.IO) {
@@ -137,31 +145,48 @@ class TapTapApiClient(private val accountManager: AccountManager) {
             // 从 /me 里尽量抠出昵称 + 头像（字段名在 TapTap 不同版本里变动过，故多候选）
             val userProfile = extractUserProfile(meData)
 
-            if (meDeveloperId != null) {
-                return@withContext CheckLoginResult("ready", meDeveloperId, profile = userProfile)
+            // Always try to fetch the full studio list for multi-studio switching.
+            var studios: List<Studio> = emptyList()
+            var chosenId: String? = meDeveloperId
+            var devProfile = UserProfile()
+            var listJson: JsonElement? = null
+            val listResponse = fetchSync("$host/api/developer/v1/list")
+            if (listResponse.status != 0 && listResponse.error == null) {
+                listJson = parseJson(listResponse.body)
+                studios = extractAllStudios(listJson)
+                if (studios.isNotEmpty()) {
+                    devProfile = extractDeveloperProfile(listJson, chosenId ?: studios.firstOrNull()?.id)
+                    // If /me didn't give us a developerId, pick from list.
+                    if (chosenId == null) chosenId = studios.firstOrNull()?.id
+                }
             }
 
-            // Fallback: developer list
-            val listResponse = fetchSync("$host/api/developer/v1/list")
-            if (listResponse.status == 0 || listResponse.error != null) {
-                return@withContext CheckLoginResult("error", null, listResponse.error ?: "identity_unavailable")
+            if (chosenId == null) {
+                // /me had no developer_id and /list was empty or errored.
+                return@withContext if (studios.isEmpty() && meDeveloperId == null) {
+                    CheckLoginResult("no-developer", null)
+                } else {
+                    CheckLoginResult("ready", meDeveloperId, profile = userProfile, studios = studios)
+                }
             }
-            val listJson = parseJson(listResponse.body)
-            val ids = extractDeveloperIdsFromList(listJson)
-            // 从 /list 里拿到开发者主体名 + Logo（作为开发者主体级别的工作室信息）
-            val devProfile = extractDeveloperProfile(listJson, ids.firstOrNull())
+
+            // If a configured developer id is present and matches one of the studios, prefer it.
+            val configuredId = normalizeDeveloperId(configuredDeveloperId)
+            if (configuredId != null && studios.any { it.id == configuredId }) {
+                chosenId = configuredId
+                devProfile = extractDeveloperProfile(listJson, chosenId)
+            }
+
+            // Pick the best display name/logo for the chosen studio.
+            val chosenStudio = studios.firstOrNull { it.id == chosenId }
             val merged = UserProfile(
                 nickname = userProfile.nickname ?: devProfile.nickname,
                 avatar = userProfile.avatar ?: devProfile.avatar,
-                developerName = devProfile.developerName ?: userProfile.developerName,
-                developerAvatar = devProfile.developerAvatar ?: userProfile.developerAvatar
+                developerName = chosenStudio?.name ?: devProfile.developerName ?: userProfile.developerName,
+                developerAvatar = chosenStudio?.logo ?: devProfile.developerAvatar ?: userProfile.developerAvatar
             )
-            if (ids.isEmpty()) {
-                return@withContext CheckLoginResult("no-developer", null)
-            }
-            val configuredId = normalizeDeveloperId(configuredDeveloperId)
-            val chosenId = if (configuredId != null && ids.contains(configuredId)) configuredId else ids[0]
-            CheckLoginResult("ready", chosenId, profile = merged)
+
+            CheckLoginResult("ready", chosenId, profile = merged, studios = studios)
         }
 
     // -------------------------------------------------------------------------
@@ -192,6 +217,25 @@ class TapTapApiClient(private val accountManager: AccountManager) {
             if (id != null) seen.add(id)
         }
         return seen.toList()
+    }
+
+    /** data.list[*] -> List<Studio>(id, name, logo) */
+    private fun extractAllStudios(root: JsonElement?): List<Studio> {
+        val data = root?.asJsonObjectOrNull()?.get("data")?.asJsonObjectOrNull() ?: return emptyList()
+        val list = data.get("list")?.asJsonArrayOrNull() ?: return emptyList()
+        val result = mutableListOf<Studio>()
+        val seen = linkedSetOf<String>()
+        list.forEach { item ->
+            val obj = item.asJsonObjectOrNull() ?: return@forEach
+            val id = extractDeveloperIdFromItem(item) ?: return@forEach
+            if (!seen.add(id)) return@forEach
+            val name = firstNonBlankString(obj,
+                "developer_name", "developerName", "name", "username", "nickname", "title")
+            val logo = firstNonBlankString(obj,
+                "logo", "developer_logo", "developerLogo", "avatar", "icon", "avatar_url")
+            result.add(Studio(id = id, name = name, logo = logo))
+        }
+        return result
     }
 
     /**

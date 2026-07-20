@@ -7,17 +7,17 @@
   <title>TapSulor 收益详情</title>
   <link rel="icon" href="app-icon.png">
   <script>
-    // 启动前立即恢复主题，避免错色闪烁
-    // 详情页统一使用浅色主题，与主界面保持一致
+    // 启动前立即恢复主题，避免错色闪烁（与主界面读取同一 localStorage 键）
     (function(){
       try{
+        var mode = localStorage.getItem('taptap_theme_mode') || 'light';
         var a = localStorage.getItem('taptap_theme_accent') || 'cyan';
-        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.setAttribute('data-theme', mode);
         document.documentElement.setAttribute('data-accent', a);
         var meta = document.querySelector('meta[name="theme-color"]');
         if(meta){
           var map = {cyan:'#25B6E9',pink:'#FF7FB3',purple:'#8B7CF6',mint:'#36C9A0'};
-          meta.setAttribute('content', map[a] || '#25B6E9');
+          meta.setAttribute('content', mode === 'dark' ? '#141820' : (map[a] || '#25B6E9'));
         }
       }catch(_){}
     })();
@@ -67,6 +67,14 @@
         </div>
         <div class="stat-tile-value" id="ov-yesterday-dau">—</div>
         <div class="stat-tile-meta" id="ov-conversion">转化率 —</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag">昨日 · 曝光</span>
+          <span class="mom-tag" id="mom-ov-imp"></span>
+        </div>
+        <div class="stat-tile-value" id="ov-yesterday-imp">—</div>
+        <div class="stat-tile-meta" id="ov-click-rate">点击率 —</div>
       </div>
       <div class="stat-tile stat-tile-month">
         <div class="stat-tile-head">

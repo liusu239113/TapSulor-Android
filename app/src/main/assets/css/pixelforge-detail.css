@@ -559,7 +559,7 @@
   }
   .detail-brand .brand-chip-name{font-size:14px}
   .overview-card.stat-deck{grid-template-columns:1fr 1fr}
-  .overview-card.stat-deck .stat-tile:nth-child(3){grid-column:1/-1}
+  .overview-card.stat-deck .stat-tile:nth-child(4){grid-column:1/-1}
   .deck-header{flex-wrap:wrap;gap:8px}
   .deck-sub{display:none}
   .cal-nav-cluster{margin-left:auto}
