@@ -23,10 +23,10 @@ class WebAppInterface(
 
     @JavascriptInterface fun isElectron(): Boolean = true
 
-    @JavascriptInterface fun fetch(url: String) {
+    @JavascriptInterface fun fetch(id: Int, url: String) {
         scope.launch {
             val result = apiClient.fetch(url)
-            resolve("__pendingFetchResolve", result)
+            resolve(id, "__pendingFetchResolve", result)
         }
     }
 
@@ -77,10 +77,10 @@ class WebAppInterface(
     @JavascriptInterface fun getCapturedApis(): String = gson.toJson(capturedApis)
     @JavascriptInterface fun clearCapturedApis() { capturedApis.clear() }
 
-    @JavascriptInterface fun replayApi(url: String) {
+    @JavascriptInterface fun replayApi(id: Int, url: String) {
         scope.launch {
             val result = apiClient.fetch(url)
-            resolve("__pendingReplayResolve", result)
+            resolve(id, "__pendingReplayResolve", result)
         }
     }
 
@@ -103,11 +103,11 @@ class WebAppInterface(
         }
     }
 
-    private fun resolve(functionName: String, result: TapTapApiClient.FetchResult) {
+    private fun resolve(id: Int, functionName: String, result: TapTapApiClient.FetchResult) {
         val json = gson.toJson(
             mapOf("ok" to result.ok, "status" to result.status, "body" to result.body, "error" to result.error)
         )
-        webView.post { webView.evaluateJavascript("window.$functionName(${jsString(json)})", null) }
+        webView.post { webView.evaluateJavascript("window.$functionName($id, ${jsString(json)})", null) }
     }
 
     private fun jsString(value: String): String = gson.toJson(value)

@@ -3,20 +3,25 @@
   if (!window.AndroidBridge || window.electronAPI) return;
 
   window.__bridgeInjected = true;
-  window.__fetchResolveQueue = [];
+  // 并发请求使用「请求 id -> resolve」映射，避免 FIFO 队列在响应乱序时把 A 的响应喂给 B。
+  window.__fetchSeq = 0;
+  window.__fetchMap = {};
+  window.__replaySeq = 0;
+  window.__replayMap = {};
   window.__loginResolveQueue = [];
-  window.__replayResolveQueue = [];
   window.__replayKeyResolveQueue = [];
-  window.__pendingFetchResolve = function (value) {
-    var callback = window.__fetchResolveQueue.shift();
+  window.__pendingFetchResolve = function (id, value) {
+    var callback = window.__fetchMap[id];
+    delete window.__fetchMap[id];
     if (callback) callback(JSON.parse(value));
   };
   window.__pendingLoginResolve = function (value) {
     var callback = window.__loginResolveQueue.shift();
     if (callback) callback(JSON.parse(value));
   };
-  window.__pendingReplayResolve = function (value) {
-    var callback = window.__replayResolveQueue.shift();
+  window.__pendingReplayResolve = function (id, value) {
+    var callback = window.__replayMap[id];
+    delete window.__replayMap[id];
     if (callback) callback(JSON.parse(value));
   };
   window.__pendingReplayKeyResolve = function (value) {
@@ -28,8 +33,9 @@
     isElectron: true,
     fetch: function (url) {
       return new Promise(function (resolve) {
-        window.__fetchResolveQueue.push(resolve);
-        AndroidBridge.fetch(url);
+        var id = ++window.__fetchSeq;
+        window.__fetchMap[id] = resolve;
+        AndroidBridge.fetch(id, url);
       });
     },
     checkLogin: function () {
@@ -51,8 +57,9 @@
     clearCapturedApis: function () { AndroidBridge.clearCapturedApis(); },
     replayApi: function (url) {
       return new Promise(function (resolve) {
-        window.__replayResolveQueue.push(resolve);
-        AndroidBridge.replayApi(url);
+        var id = ++window.__replaySeq;
+        window.__replayMap[id] = resolve;
+        AndroidBridge.replayApi(id, url);
       });
     },
     replayKeyApis: function () {
