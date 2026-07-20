@@ -3,8 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#25B6E9">
   <title>TapSulor 收益详情</title>
   <link rel="icon" href="app-icon.png">
+  <script>
+    // 启动前立即恢复主题，避免错色闪烁
+    (function(){
+      try{
+        var m = localStorage.getItem('taptap_theme_mode') || 'light';
+        var a = localStorage.getItem('taptap_theme_accent') || 'cyan';
+        document.documentElement.setAttribute('data-theme', m);
+        document.documentElement.setAttribute('data-accent', a);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if(meta){
+          var map = {cyan:'#25B6E9',pink:'#FF7FB3',purple:'#8B7CF6',mint:'#36C9A0'};
+          meta.setAttribute('content', m === 'dark' ? '#141820' : (map[a] || '#25B6E9'));
+        }
+      }catch(_){}
+    })();
+  </script>
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/detail.css">
   <link rel="stylesheet" href="css/pixelforge.css">
@@ -89,7 +106,7 @@
       </div>
     </div>
 
-    <!-- 月汇总内联条 + 导出 -->
+    <!-- 月汇总内联条 -->
     <div class="cal-toolbar">
       <div class="ms-inline">
         <span class="ms-item"><b id="ms-total">¥0.00</b><i>月总收入</i></span>
@@ -98,14 +115,6 @@
         <span class="ms-sep">·</span>
         <span class="ms-item"><b id="ms-conv">0%</b><i>均转化</i></span>
       </div>
-      <button class="export-btn" id="export-btn" title="导出 CSV">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        导出
-      </button>
     </div>
 
     <!-- 日历表头 -->

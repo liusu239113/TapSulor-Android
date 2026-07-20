@@ -1074,24 +1074,6 @@
     }
   }
 
-  // ========== 导出 CSV ==========
-  function exportCSV() {
-    if (!currentMonthData || !currentMonthData.dailyList || currentMonthData.dailyList.length === 0) return;
-    const sorted = [...currentMonthData.dailyList].sort((a, b) => a.date.localeCompare(b.date));
-    let csv = '\uFEFF日期,收入(元),日活,转化率(%),曝光,点击,点击率,详情页转化量,详情页转化率,转化总量\n';
-    for (const d of sorted) {
-      const conv = d.dau > 0 ? (d.revenue / d.dau * 100).toFixed(2) : '0';
-      csv += `${d.date},${d.revenue},${d.dau},${conv},${d.impression || 0},${d.click || 0},${d.clickRate || ''},${d.convDetail || 0},${d.convDetailRate || ''},${d.convTotal || 0}\n`;
-    }
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentGame.name}_${currentSelectedMonth}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   // ========== 事件 ==========
   document.getElementById('back-btn').addEventListener('click', () => {
     window.location.href = 'index.html';
@@ -1145,8 +1127,6 @@
       closeMonthPicker();
     }
   });
-
-  document.getElementById('export-btn').addEventListener('click', exportCSV);
 
   // ========== 初始化 ==========
   const gameData = sessionStorage.getItem('currentGame');

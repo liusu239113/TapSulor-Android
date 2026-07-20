@@ -1,1 +1,157 @@
-.detail-header{margin:0 0 14px;padding:calc(18px + env(safe-area-inset-top)) 0 14px;border-bottom:2px solid #3a3a6a;background:transparent}.back-btn{border-radius:0;background:#252550;border:2px solid #3a3a6a;color:#f0f0f0;box-shadow:3px 3px 0 #090919}.detail-game-icon{border-radius:0;background:#0f0f23;border:2px solid #6c5ce7}.detail-game-name{font-weight:700;color:#f0f0f0}.detail-game-id{font-family:PixelMono,monospace;color:#a0a0c0}.detail-grand-mini{border-radius:0;background:#14142e;border:2px solid #21bdae;box-shadow:3px 3px 0 #090919}.detail-grand-mini strong{font-family:PixelMono,monospace;color:#21bdae}.overview-card{border-radius:0;background:#1b1b3a;border:2px solid #3a3a6a;box-shadow:4px 4px 0 #090919}.overview-divider{background:#3a3a6a;width:2px}.overview-value{font-family:PixelMono,monospace;color:#f0f0f0}.overview-label,.overview-sub{color:#a0a0c0}.month-toolbar{border-radius:0;background:#14142e;border:2px solid #3a3a6a;box-shadow:3px 3px 0 #090919}.month-nav,.month-title{border-radius:0!important;background:#252550;border:2px solid #3a3a6a;color:#f0f0f0}.month-title{font-weight:700}.month-picker{border-radius:0;background:#1b1b3a;border:2px solid #6c5ce7;box-shadow:4px 4px 0 #090919}.mp-year-nav,.mp-month{border-radius:0!important}.cal-toolbar{border-radius:0;background:#1b1b3a;border:2px solid #3a3a6a;box-shadow:3px 3px 0 #090919}.ms-item b{font-family:PixelMono,monospace;color:#f0f0f0}.ms-item i{color:#a0a0c0}.export-btn{border-radius:0;background:#21bdae;border:2px solid #19a899;color:#0f0f23;box-shadow:3px 3px 0 #090919}.cal-header{color:#a0a0c0;font-family:PixelMono,monospace}.daily-grid{border-radius:0;background:#1b1b3a;border:2px solid #3a3a6a;box-shadow:4px 4px 0 #090919}.day-cell{border-color:#292957;background:#1b1b3a}.day-cell:hover{background:#252550}.day-number{font-family:PixelMono,monospace}.day-revenue{color:#21bdae;font-family:PixelMono,monospace}.day-dau{color:#a0a0c0}.day-cell.is-today{box-shadow:inset 0 0 0 2px #6c5ce7}.day-modal-overlay{background:rgba(4,4,15,.88)}.day-modal{border-radius:0;background:#1b1b3a;border:2px solid #6c5ce7;box-shadow:6px 6px 0 #090919}.day-modal-header{border-color:#3a3a6a;background:#14142e}.day-modal-close{border-radius:0!important;background:#ff4757;color:#fff}.day-stat{border-radius:0;background:#14142e;border:1px solid #3a3a6a}.day-stat-value{font-family:PixelMono,monospace}.chart-card,.extra-card{border-radius:0;background:#1b1b3a;border:2px solid #3a3a6a;box-shadow:3px 3px 0 #090919}@media(max-width:560px){.detail-header{display:grid;grid-template-columns:auto 1fr;gap:11px}.detail-grand-mini{grid-column:1/-1;width:100%;display:flex;justify-content:space-between}.overview-card{display:grid;grid-template-columns:1fr 1fr}.overview-divider{display:none}.overview-metric{border-bottom:2px solid #292957}.overview-metric:last-child{grid-column:1/-1;border-bottom:0}.daily-grid{grid-template-columns:repeat(7,minmax(40px,1fr))}.day-cell{min-height:76px;padding:6px 3px}.day-revenue{font-size:9px}}
+/* pixelforge-detail.css — 详情页像素风覆盖（简约蓝/粉/白配色，支持浅/深色 + 多强调色） */
+
+.detail-header{
+  margin:0 0 14px;
+  padding:calc(18px + env(safe-area-inset-top)) 0 14px;
+  border-bottom:2px solid var(--border-light);
+  background:transparent;
+}
+.back-btn{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--border-light);
+  color:var(--text-primary);
+  box-shadow:3px 3px 0 var(--border-strong);
+  font-family:PixelForge,"Microsoft YaHei",sans-serif;
+}
+.back-btn:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent);}
+
+.detail-game-icon{
+  border-radius:0;
+  background:var(--bg-muted);
+  border:2px solid var(--accent);
+  box-shadow:2px 2px 0 var(--border-strong);
+}
+.detail-game-name{font-weight:700;color:var(--text-primary);}
+.detail-game-id{font-family:PixelMono,monospace;color:var(--text-tertiary);}
+
+.detail-grand-mini{
+  border-radius:0;
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent-strong) 100%);
+  border:2px solid var(--accent-strong);
+  box-shadow:3px 3px 0 var(--border-strong);
+  color:#fff;
+}
+.detail-grand-mini span{color:rgba(255,255,255,.85);}
+.detail-grand-mini strong{font-family:PixelMono,monospace;color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,.15);}
+
+.overview-card{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--border-light);
+  box-shadow:var(--shadow-card);
+}
+.overview-divider{background:var(--border-light);width:2px}
+.overview-value{font-family:PixelMono,monospace;color:var(--text-primary);}
+.overview-label{color:var(--text-secondary);}
+.overview-sub{color:var(--text-tertiary);}
+
+.month-toolbar{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--border-light);
+  box-shadow:var(--shadow-card);
+}
+.month-nav,.month-title{
+  border-radius:0!important;
+  background:var(--bg-muted);
+  border:2px solid var(--border-light);
+  color:var(--text-primary);
+  font-family:PixelForge,"Microsoft YaHei",sans-serif;
+}
+.month-nav:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent);}
+.month-title{font-weight:700;background:var(--bg-card);color:var(--accent-ink);border-color:var(--accent);}
+.month-title:hover{background:var(--accent-soft);}
+
+.month-picker{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--accent);
+  box-shadow:4px 4px 0 var(--border-strong);
+}
+.mp-year-nav,.mp-month{border-radius:0!important;font-family:PixelForge,"Microsoft YaHei",sans-serif;}
+.mp-year-nav{background:var(--bg-muted);border:2px solid var(--border-light);color:var(--text-primary);}
+.mp-year-nav:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent);}
+.mp-month{background:var(--bg-muted);border:2px solid var(--border-light);color:var(--text-primary);}
+.mp-month:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent);}
+.mp-month.is-current{background:var(--accent);color:#fff;border-color:var(--accent-strong);}
+.mp-month.is-selected{background:var(--accent-strong);color:#fff;border-color:var(--accent-ink);}
+
+.cal-toolbar{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--border-light);
+  box-shadow:var(--shadow-card);
+  /* 无导出按钮后居中月汇总 */
+  justify-content:center;
+}
+.ms-item b{font-family:PixelMono,monospace;color:var(--accent-ink);}
+.ms-item i{color:var(--text-tertiary);font-style:normal;}
+.ms-sep{color:var(--border-strong);}
+
+.cal-header{color:var(--text-tertiary);font-family:PixelMono,monospace;}
+.daily-grid{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--border-light);
+  box-shadow:var(--shadow-card);
+}
+.day-cell{border-color:var(--border-light);background:var(--bg-card);}
+.day-cell:hover{background:var(--accent-soft);}
+.day-cell.is-other-month{background:var(--bg-muted);color:var(--text-tertiary);}
+.day-number{font-family:PixelMono,monospace;color:var(--text-primary);}
+.day-revenue{color:var(--accent-ink);font-family:PixelMono,monospace;font-weight:700;}
+.day-dau{color:var(--text-tertiary);}
+.day-cell.is-today{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-soft);}
+.day-cell.is-clickable{cursor:pointer;}
+
+.day-modal-overlay{background:rgba(20,24,32,.55);backdrop-filter:blur(2px);}
+.day-modal{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--accent);
+  box-shadow:6px 6px 0 var(--border-strong);
+  color:var(--text-primary);
+}
+.day-modal-header{border-color:var(--border-light);background:var(--bg-muted);}
+.day-modal-title{color:var(--text-primary);font-family:PixelForge,sans-serif;font-weight:700;}
+.day-modal-close{border-radius:0!important;background:var(--danger);color:#fff;border:2px solid var(--danger);box-shadow:2px 2px 0 var(--border-strong);}
+.day-modal-close:hover{background:#ff4d4d;}
+
+.day-stat{
+  border-radius:0;
+  background:var(--bg-muted);
+  border:2px solid var(--border-light);
+}
+.day-stat-label{color:var(--text-secondary);font-family:PixelForge,sans-serif;}
+.day-stat-value{font-family:PixelMono,monospace;color:var(--accent-ink);}
+
+.chart-card,.extra-card{
+  border-radius:0;
+  background:var(--bg-card);
+  border:2px solid var(--border-light);
+  box-shadow:var(--shadow-card);
+  color:var(--text-primary);
+}
+.chart-title,.extra-title{color:var(--text-primary);font-family:PixelForge,sans-serif;font-weight:700;}
+
+/* 环比色签沿用主色 */
+.mom-tag.up{background:rgba(76,195,138,.15);color:#2e9668;border:1px solid #4CC38A;}
+.mom-tag.down{background:rgba(255,107,107,.15);color:#c94a4a;border:1px solid #FF6B6B;}
+[data-theme="dark"] .mom-tag.up{color:#7de3b5;}
+[data-theme="dark"] .mom-tag.down{color:#ff9b9b;}
+
+/* 加载/空状态 */
+.loading-tip,.empty-tip{color:var(--text-tertiary);font-family:PixelMono,monospace;}
+
+@media(max-width:560px){
+  .detail-header{display:grid;grid-template-columns:auto 1fr;gap:11px}
+  .detail-grand-mini{grid-column:1/-1;width:100%;display:flex;justify-content:space-between}
+  .overview-card{display:grid;grid-template-columns:1fr 1fr}
+  .overview-divider{display:none}
+  .overview-metric{border-bottom:2px solid var(--border-light)}
+  .overview-metric:last-child{grid-column:1/-1;border-bottom:0}
+  .daily-grid{grid-template-columns:repeat(7,minmax(40px,1fr))}
+  .day-cell{min-height:76px;padding:6px 3px}
+  .day-revenue{font-size:9px}
+}

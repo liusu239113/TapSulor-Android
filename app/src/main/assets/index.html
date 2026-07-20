@@ -3,17 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0F0F23">
+  <meta name="theme-color" content="#25B6E9">
   <title>TapSulor</title>
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/pixelforge.css">
 </head>
 <body>
+  <div id="splash" aria-hidden="true">
+    <div class="splash-logo"><img src="app-icon.png" alt="TapSulor"></div>
+    <div class="splash-brand">TapSulor</div>
+    <div class="splash-tagline">AD REVENUE CONSOLE</div>
+  </div>
   <div id="auth-boot"><div class="boot-box"><div class="boot-cursor"></div><strong>VERIFYING SESSION</strong><span>正在验证开发者账号...</span></div></div>
   <div class="app">
     <header class="topbar">
       <div class="topbar-left">
-        <div class="pixel-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <img class="brand-logo" src="app-icon.png" alt="TapSulor" width="38" height="38">
         <div class="brand-copy">
           <span class="eyebrow">AD REVENUE CONSOLE</span>
           <h1>TapSulor</h1>
@@ -32,7 +37,7 @@
         <strong id="active-account-name">正在识别账号...</strong>
         <span id="active-account-id">连接 TapTap 开发者中心</span>
       </div>
-      <button class="console-manage" type="button" id="account-manage-btn">管理账号 &gt;</button>
+      <button class="console-manage" type="button" id="account-manage-btn">账号设置 &gt;</button>
     </section>
 
     <section class="summary-total-banner" id="summary-total-banner">
@@ -77,10 +82,30 @@
       <div class="settings-overlay" id="settings-overlay"></div>
       <div class="settings-panel">
         <div class="settings-header">
-          <div><span>CONTROL PANEL</span><h2>账号与设置</h2></div>
+          <div><span>SETTINGS</span><h2>账号设置</h2></div>
           <button class="settings-close" id="settings-close" title="关闭">×</button>
         </div>
         <div class="settings-body">
+          <div class="settings-block">
+            <div class="settings-item-text"><div class="settings-item-title">外观主题</div><div class="settings-item-desc">切换浅色 / 深色模式，并选择你喜欢的强调色</div></div>
+            <div class="settings-row">
+              <span class="settings-row-label">显示模式</span>
+              <div class="mode-switch" id="mode-switch">
+                <button type="button" data-mode="light" class="is-active">浅色</button>
+                <button type="button" data-mode="dark">深色</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <span class="settings-row-label">强调色</span>
+              <div class="theme-dots" id="theme-dots">
+                <button type="button" class="theme-dot is-active" data-accent="cyan" title="晴空蓝" style="--dot:linear-gradient(135deg,#25B6E9,#5ED5F5);"></button>
+                <button type="button" class="theme-dot" data-accent="pink" title="樱花粉" style="--dot:linear-gradient(135deg,#FF7FB3,#FFB1D0);"></button>
+                <button type="button" class="theme-dot" data-accent="purple" title="梦幻紫" style="--dot:linear-gradient(135deg,#8B7CF6,#B4A8FB);"></button>
+                <button type="button" class="theme-dot" data-accent="mint" title="薄荷绿" style="--dot:linear-gradient(135deg,#36C9A0,#7DE3C2);"></button>
+              </div>
+            </div>
+          </div>
+          <div class="settings-divider"></div>
           <div class="settings-block account-block">
             <div class="settings-item-text"><div class="settings-item-title">开发者账号仓库</div><div class="settings-item-desc">每个账号保存独立登录会话，切换后自动刷新收益数据</div></div>
             <div class="account-list" id="account-list"></div>

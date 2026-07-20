@@ -13,9 +13,37 @@
   'use strict';
 
   // ========== 主题与设置（最早执行，避免白闪） ==========
+  const THEME_KEY = 'taptap_theme_mode';     // 'light' | 'dark'
+  const ACCENT_KEY = 'taptap_theme_accent';  // 'cyan' | 'pink' | 'purple' | 'mint'
   const SETTINGS_KEYS = {
     monthGoal: 'taptap_month_goal'
   };
+
+  // 应用主题（可在 DOM 就绪前执行：只改 <html> 上的 data-*）
+  function applyTheme(mode, accent) {
+    const root = document.documentElement;
+    if (mode) root.setAttribute('data-theme', mode);
+    if (accent) root.setAttribute('data-accent', accent);
+    // 同步 Splash 背景（深色模式时加深渐变）
+    const splash = document.getElementById('splash');
+    if (splash) {
+      if (mode === 'dark') splash.classList.add('splash-dark');
+      else splash.classList.remove('splash-dark');
+    }
+    // 更新 theme-color meta
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const map = {
+        cyan: '#25B6E9', pink: '#FF7FB3', purple: '#8B7CF6', mint: '#36C9A0'
+      };
+      meta.setAttribute('content', mode === 'dark' ? '#141820' : (map[accent] || '#25B6E9'));
+    }
+  }
+
+  // 启动时立刻从 localStorage 读取并应用（避免白闪）
+  const savedMode = localStorage.getItem(THEME_KEY) || 'light';
+  const savedAccent = localStorage.getItem(ACCENT_KEY) || 'cyan';
+  applyTheme(savedMode, savedAccent);
 
   const API_BASE = 'https://developer.taptap.cn/api';
   // developer_id 从主进程配置动态获取（支持多账号），init() 里赋值
@@ -35,7 +63,8 @@
   const sounds = {
     click: new Audio('audio/tapsulor_pixel_click.mp3'),
     switch: new Audio('audio/tapsulor_pixel_switch.mp3'),
-    refresh: new Audio('audio/tapsulor_pixel_refresh.mp3')
+    refresh: new Audio('audio/tapsulor_pixel_refresh.mp3'),
+    splash: new Audio('audio/tapsulor_splash.mp3')
   };
   Object.values(sounds).forEach(sound => { sound.preload = 'auto'; });
 
@@ -1065,6 +1094,41 @@
     settingsOverlay.addEventListener('click', closeSettings);
     settingsClose.addEventListener('click', closeSettings);
     bindAccountEvents();
+
+    // 主题切换 UI（浅色/深色）
+    const modeSwitch = document.getElementById('mode-switch');
+    if (modeSwitch) {
+      // 初始化按钮激活态
+      modeSwitch.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('is-active', b.dataset.mode === savedMode);
+      });
+      modeSwitch.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-mode]');
+        if (!btn) return;
+        const mode = btn.dataset.mode;
+        localStorage.setItem(THEME_KEY, mode);
+        applyTheme(mode, null);
+        modeSwitch.querySelectorAll('button').forEach(b => b.classList.toggle('is-active', b === btn));
+        playSfx('click');
+      });
+    }
+    // 强调色选择
+    const themeDots = document.getElementById('theme-dots');
+    if (themeDots) {
+      themeDots.querySelectorAll('.theme-dot').forEach(d => {
+        d.classList.toggle('is-active', d.dataset.accent === savedAccent);
+      });
+      themeDots.addEventListener('click', (e) => {
+        const dot = e.target.closest('.theme-dot');
+        if (!dot) return;
+        const accent = dot.dataset.accent;
+        localStorage.setItem(ACCENT_KEY, accent);
+        applyTheme(null, accent);
+        themeDots.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('is-active', d === dot));
+        playSfx('click');
+      });
+    }
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !settingsModal.hidden) closeSettings();
     });
@@ -1130,5 +1194,25 @@
   });
 
   // 启动
-  init();
+  // ========== 启动 Splash 动画 + 音效（仅首次进入，详情页返回不重复播放） ==========
+  (function playSplash() {
+    const splash = document.getElementById('splash');
+    if (!splash) { init(); return; }
+    if (sessionStorage.getItem('splash_played') === '1') {
+      splash.remove();
+      init();
+      return;
+    }
+    sessionStorage.setItem('splash_played', '1');
+    // 播放进入音效
+    try { sounds.splash.currentTime = 0; sounds.splash.play().catch(() => {}); } catch (_) {}
+    // 展示约 1.4s 后淡出
+    setTimeout(() => {
+      splash.classList.add('is-done');
+      setTimeout(() => {
+        splash.remove();
+      }, 750);
+    }, 1400);
+    init();
+  })();
 })();
