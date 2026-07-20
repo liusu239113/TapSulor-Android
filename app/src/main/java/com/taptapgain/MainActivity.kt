@@ -17,9 +17,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         accountManager = AccountManager(this)
         apiClient = TapTapApiClient()
-        CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(true)
-
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.apply {
@@ -29,7 +26,7 @@ class MainActivity : AppCompatActivity() {
                 allowFileAccess = true; cacheMode = WebSettings.LOAD_DEFAULT
                 userAgentString = settings.userAgentString.replace("; wv", "")
                 CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this@apply, true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this@WebView, true)
             }
 
             val assetLoader = WebViewAssetLoader.Builder()

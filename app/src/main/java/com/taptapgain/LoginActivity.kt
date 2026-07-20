@@ -2,6 +2,7 @@ package com.taptapgain
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.*
@@ -24,7 +25,7 @@ class LoginActivity : AppCompatActivity() {
                 setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
                 userAgentString = settings.userAgentString.replace("; wv", "")
                 CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this@apply, true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this@WebView, true)
             }
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
