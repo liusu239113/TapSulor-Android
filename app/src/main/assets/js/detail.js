@@ -360,10 +360,11 @@
     const prevDayDAU = (dau2dMap[dayBefore] && dau2dMap[dayBefore].dau) || null;
 
     const monthRevenue = monthRev.ok === false ? null : monthRev.total;
+    const monthRevenueList = monthRev.ok === false ? [] : (monthRev.list || []);
     const lastMonthRevenue = lastMonthRev.total;
 
     renderOverview({
-      yesterdayRevenue, yesterdayDAU, monthRevenue,
+      yesterdayRevenue, yesterdayDAU, monthRevenue, monthRevenueList,
       prevDayRevenue, prevDayDAU, lastMonthRevenue
     });
   }
@@ -526,6 +527,48 @@
     }
   }
 
+  // 月末预估：基于已发生每日收入，去掉两端极值（各 10%）后取稳健均值推算剩余天数
+  // dailyList: [{date:'YYYY-MM-DD', revenue:number}]
+  // monthTotal: 本月截至目前累计收入（可空，空则用 dailyList 求和）
+  function computeMonthProjection(dailyList, monthTotal) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const todayNum = now.getDate();
+    const yesterdayNum = Math.max(1, todayNum - 1); // 今日数据可能不完整，不计入已过天数
+    const elapsedDays = yesterdayNum;
+    const remainingDays = daysInMonth - elapsedDays;
+
+    const monthPrefix = `${y}-${String(m + 1).padStart(2, '0')}-`;
+    const values = [];
+    let listSum = 0;
+    (dailyList || []).forEach(d => {
+      if (!d || !d.date || !String(d.date).startsWith(monthPrefix)) return;
+      const day = parseInt(String(d.date).slice(8, 10), 10);
+      if (isNaN(day) || day < 1 || day > elapsedDays) return;
+      const rev = Number(d.revenue) || 0;
+      values.push(rev);
+      listSum += rev;
+    });
+
+    const total = (monthTotal != null && !isNaN(monthTotal)) ? Number(monthTotal) : listSum;
+    const avg = elapsedDays > 0 ? total / elapsedDays : 0;
+
+    // 稳健日均值：排序后去掉最高/最低各 10%（至少各去 1 个，数据不足 3 天退化为普通均值）
+    let robustMean = avg;
+    if (values.length >= 3) {
+      const sorted = [...values].sort((a, b) => a - b);
+      const trim = Math.max(1, Math.floor(sorted.length * 0.1));
+      const slice = sorted.slice(trim, sorted.length - trim);
+      if (slice.length > 0) {
+        robustMean = slice.reduce((s, v) => s + v, 0) / slice.length;
+      }
+    }
+
+    const projection = total + robustMean * remainingDays;
+    return { avg, projection, elapsedDays, remainingDays, daysInMonth, robustMean };
+  }
+
   function renderOverview(data) {
     if (!data) return;
     document.getElementById('ov-yesterday-rev').textContent = data.yesterdayRevenue == null ? '暂无' : '¥' + fmt(data.yesterdayRevenue);
@@ -533,6 +576,21 @@
     const conv = data.yesterdayRevenue != null && data.yesterdayDAU > 0 ? (data.yesterdayRevenue / data.yesterdayDAU * 100) : null;
     document.getElementById('ov-conversion').textContent = conv == null ? '转化率 —' : '转化率 ' + conv.toFixed(1) + '%';
     document.getElementById('ov-month-rev').textContent = data.monthRevenue == null ? '暂无' : '¥' + fmt(data.monthRevenue);
+
+    // 本月日均 + 月末预估
+    const avgEl = document.getElementById('ov-month-avg');
+    const projEl = document.getElementById('ov-month-proj');
+    if (avgEl && projEl) {
+      const list = Array.isArray(data.monthRevenueList) ? data.monthRevenueList : [];
+      if (list.length === 0 || data.monthRevenue == null) {
+        avgEl.textContent = '日均 ¥—';
+        projEl.textContent = '月末预估 ¥—';
+      } else {
+        const proj = computeMonthProjection(list, data.monthRevenue);
+        avgEl.textContent = `日均 ¥${fmt(proj.avg)}`;
+        projEl.textContent = `月末预估 ¥${fmt(proj.projection)}`;
+      }
+    }
 
     // 环比标签
     const momRevEl = document.getElementById('mom-ov-rev');
@@ -887,8 +945,26 @@
       tip.hidden = false;
       showTrendFocus(chart, idx);
       const cr = card.getBoundingClientRect();
-      tip.style.left = (e.clientX - cr.left) + 'px';
-      tip.style.top = (e.clientY - cr.top) + 'px';
+      const tipW = tip.offsetWidth || 0;
+      const tipH = tip.offsetHeight || 0;
+      const margin = 6;
+      let left = e.clientX - cr.left;
+      let top = e.clientY - cr.top;
+      // tooltip 通过 translate(-50%, -140%) 相对 (left,top) 居中并上浮，需要限制在卡片内防止被裁切
+      if (tipW > 0) {
+        const minL = tipW / 2 + margin;
+        const maxL = cr.width - tipW / 2 - margin;
+        if (left < minL) left = minL;
+        if (left > maxL) left = maxL;
+      }
+      if (tipH > 0) {
+        const minT = tipH * 0.4 + margin;
+        const maxT = cr.height - tipH * 0.4 - margin;
+        if (top < minT) top = minT;
+        if (top > maxT) top = maxT;
+      }
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
     });
     chart.addEventListener('mouseleave', () => { tip.hidden = true; clearTrendFocus(chart); });
     return card;
@@ -896,7 +972,7 @@
 
   // 通用坐标
   function trendAxis(pts, W, H) {
-    const padL = 44, padR = 14, padT = 16, padB = 24;
+    const padL = 44, padR = 22, padT = 16, padB = 24;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
     const n = pts.length;

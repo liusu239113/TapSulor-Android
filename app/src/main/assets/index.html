@@ -12,9 +12,9 @@
   <div id="splash" aria-hidden="true">
     <div class="splash-logo"><img src="app-icon.png" alt="TapSulor"></div>
     <div class="splash-brand">TapSulor</div>
-    <div class="splash-tagline">MISSION CONTROL</div>
+    <div class="splash-tagline">数据指挥中心</div>
   </div>
-  <div id="auth-boot"><div class="boot-box"><div class="boot-cursor"></div><strong>VERIFYING SESSION</strong><span>正在验证开发者账号...</span></div></div>
+  <div id="auth-boot"><div class="boot-box"><div class="boot-cursor"></div><strong>正在校验会话</strong><span>正在验证开发者账号...</span></div></div>
   <div class="app">
 
     <!-- ===== 顶部指挥条 ===== -->
@@ -23,7 +23,7 @@
         <img class="brand-chip-logo" src="app-icon.png" alt="TapSulor" width="28" height="28">
         <div class="brand-chip-copy">
           <span class="brand-chip-name">TapSulor</span>
-          <span class="brand-chip-sub">MISSION CONTROL</span>
+          <span class="brand-chip-sub">数据指挥中心</span>
         </div>
       </div>
       <div class="command-actions">
@@ -43,7 +43,7 @@
     <section class="operator-strip">
       <img class="op-avatar" id="active-account-avatar" src="app-icon.png" alt="" hidden>
       <div class="op-left">
-        <span class="op-kicker">OPERATOR</span>
+        <span class="op-kicker">运营主体</span>
         <strong id="active-account-name">正在识别账号...</strong>
         <span id="active-account-id" class="op-mono">连接 TapTap 开发者中心</span>
       </div>
@@ -54,7 +54,7 @@
     <section class="stat-deck">
       <div class="stat-tile stat-tile-cumulative">
         <div class="stat-tile-head">
-          <span class="stat-tile-tag">CUMULATIVE</span>
+          <span class="stat-tile-tag">累计收益</span>
           <span class="stat-tile-dot"></span>
         </div>
         <div class="stat-tile-value" id="summary-total">¥0.00</div>
@@ -65,14 +65,18 @@
           <span class="stat-tile-tag" id="summary-today-label">昨日广告收益</span>
         </div>
         <div class="stat-tile-value" id="summary-today">¥0.00</div>
-        <div class="stat-tile-meta">YESTERDAY</div>
+        <div class="stat-tile-meta">昨日</div>
       </div>
       <div class="stat-tile stat-tile-month">
         <div class="stat-tile-head">
           <span class="stat-tile-tag">本月广告收益</span>
         </div>
         <div class="stat-tile-value" id="summary-month">¥0.00</div>
-        <div class="stat-tile-meta">THIS MONTH</div>
+        <div class="stat-tile-meta" id="summary-month-meta">
+          <span class="meta-row">本月</span>
+          <span class="meta-row" id="summary-month-avg">日均 ¥—</span>
+          <span class="meta-row" id="summary-month-proj">月末预估 ¥—</span>
+        </div>
       </div>
     </section>
 
@@ -87,15 +91,14 @@
     <div class="deck-header">
       <div class="deck-title">
         <span class="deck-index">02</span>
-        <span>PROJECTS</span>
+        <span>项目列表</span>
         <span class="deck-sub">项目收益</span>
       </div>
       <div class="deck-tools">
-        <label class="switch-wrap"><input type="checkbox" id="toggle-unpublished"><span class="switch-text">未发布</span></label>
         <span class="game-count" id="game-count">0</span>
       </div>
     </div>
-    <div class="game-grid" id="game-list"><div class="loading-tip">LOADING DATA...</div></div>
+    <div class="game-grid" id="game-list"><div class="loading-tip">数据加载中...</div></div>
 
     <footer class="app-footer"><span id="app-version-footer">TapSulor / v1.0.0</span></footer>
 
@@ -104,7 +107,7 @@
       <div class="settings-overlay" id="settings-overlay"></div>
       <div class="settings-panel">
         <div class="settings-header">
-          <div><span>CONTROL PANEL</span><h2>控制台设置</h2></div>
+          <div><span>控制面板</span><h2>控制台设置</h2></div>
           <button class="settings-close" id="settings-close" title="关闭">×</button>
         </div>
         <div class="settings-body">
@@ -142,7 +145,7 @@
             <div class="account-add-hint" id="account-add-hint">请在打开的 TapTap 页面完成登录</div>
           </div>
           <div class="settings-divider"></div>
-          <div class="settings-about"><div class="settings-about-title">SYSTEM</div><div class="settings-about-row"><span>版本</span><span id="app-version-settings">TapSulor / 1.0.0</span></div></div>
+          <div class="settings-about"><div class="settings-about-title">系统信息</div><div class="settings-about-row"><span>版本</span><span id="app-version-settings">TapSulor / 1.0.0</span></div></div>
         </div>
       </div>
     </div>

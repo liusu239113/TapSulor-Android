@@ -8,16 +8,16 @@
   <link rel="icon" href="app-icon.png">
   <script>
     // 启动前立即恢复主题，避免错色闪烁
+    // 详情页统一使用浅色主题，与主界面保持一致
     (function(){
       try{
-        var m = localStorage.getItem('taptap_theme_mode') || 'light';
         var a = localStorage.getItem('taptap_theme_accent') || 'cyan';
-        document.documentElement.setAttribute('data-theme', m);
+        document.documentElement.setAttribute('data-theme', 'light');
         document.documentElement.setAttribute('data-accent', a);
         var meta = document.querySelector('meta[name="theme-color"]');
         if(meta){
           var map = {cyan:'#25B6E9',pink:'#FF7FB3',purple:'#8B7CF6',mint:'#36C9A0'};
-          meta.setAttribute('content', m === 'dark' ? '#141820' : (map[a] || '#25B6E9'));
+          meta.setAttribute('content', map[a] || '#25B6E9');
         }
       }catch(_){}
     })();
@@ -46,7 +46,7 @@
         </div>
       </div>
       <div class="detail-grand-tile" id="detail-grand-mini" title="累计广告收益">
-        <div class="stat-tile-tag">CUMULATIVE</div>
+        <div class="stat-tile-tag">累计收益</div>
         <strong id="grand-total">¥—</strong>
       </div>
     </header>
@@ -55,14 +55,14 @@
     <div class="overview-card stat-deck">
       <div class="stat-tile stat-tile-yesterday">
         <div class="stat-tile-head">
-          <span class="stat-tile-tag">YESTERDAY · 广告收益</span>
+          <span class="stat-tile-tag">昨日 · 广告收益</span>
           <span class="mom-tag" id="mom-ov-rev"></span>
         </div>
         <div class="stat-tile-value" id="ov-yesterday-rev">¥—</div>
       </div>
       <div class="stat-tile">
         <div class="stat-tile-head">
-          <span class="stat-tile-tag">YESTERDAY · 日活</span>
+          <span class="stat-tile-tag">昨日 · 日活</span>
           <span class="mom-tag" id="mom-ov-dau"></span>
         </div>
         <div class="stat-tile-value" id="ov-yesterday-dau">—</div>
@@ -70,10 +70,14 @@
       </div>
       <div class="stat-tile stat-tile-month">
         <div class="stat-tile-head">
-          <span class="stat-tile-tag">THIS MONTH · 广告收益</span>
+          <span class="stat-tile-tag">本月 · 广告收益</span>
           <span class="mom-tag" id="mom-ov-month"></span>
         </div>
         <div class="stat-tile-value" id="ov-month-rev">¥—</div>
+        <div class="stat-tile-meta" id="ov-month-meta">
+          <span class="meta-row" id="ov-month-avg">日均 ¥—</span>
+          <span class="meta-row" id="ov-month-proj">月末预估 ¥—</span>
+        </div>
       </div>
     </div>
 
@@ -81,7 +85,7 @@
     <div class="deck-header cal-deck-header">
       <div class="deck-title">
         <span class="deck-index">03</span>
-        CALENDAR
+        每日日历
         <span class="deck-sub">每日收益</span>
       </div>
       <div class="cal-nav-cluster" id="month-nav-cluster">

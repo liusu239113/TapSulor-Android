@@ -204,7 +204,7 @@ body {
 /* ========== 汇总卡片（今日预估 + 昨日收入 + 本月收入） ========== */
 .summary-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 10px;
   margin-bottom: 20px;
 }
@@ -486,10 +486,10 @@ body {
   margin-left: 4px;
 }
 
-/* 卡片底部：3 个数据指标等分 */
+/* 卡片底部：4 个数据指标等分 */
 .game-metrics {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 6px;
   padding-top: 2px;
 }
@@ -539,7 +539,7 @@ body {
   opacity: 0.75;
 }
 
-/* 指标颜色：昨日收入青色，日活紫色，本月蓝色 */
+/* 指标颜色：昨日收入青色，日活紫色，本月蓝色，曝光橙色 */
 .game-metric.is-today .game-metric-value {
   color: var(--taptap-cyan-dark);
 }
@@ -550,6 +550,10 @@ body {
 
 .game-metric.is-month .game-metric-value {
   color: var(--taptap-blue);
+}
+
+.game-metric.is-impression .game-metric-value {
+  color: #f59e0b;
 }
 
 /* 累计总收入条幅（卡片底部独立横条） */

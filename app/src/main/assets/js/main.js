@@ -56,12 +56,12 @@
   let APP_LIST_URL = null;
   const REVENUE_URL = `${API_BASE}/mini-app/v1/ad/payout-report-data`;
   const DAU_URL = `${API_BASE}/mini-app/v1/stats-by-day/device`;
+  const POSITION_URL = `${API_BASE}/dashboard/v2/stats-by-day/position/cn`;
 
   // 是否在 Electron 环境
   const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
 
   let GAMES = [];          // 游戏列表（从 API 获取）
-  let showUnpublished = false;
   let loadingRevenue = false;
   let firstRenderDone = false;  // 卡片错落淡入只在首次加载/手动刷新时触发
 
@@ -139,8 +139,9 @@
     return { start, end };
   }
 
+  // 未发布游戏不展示
   function getVisibleGames() {
-    return showUnpublished ? GAMES : GAMES.filter(g => g.published);
+    return GAMES.filter(g => g.published);
   }
 
   // 环比百分比：(cur - prev) / prev × 100
@@ -248,8 +249,8 @@
       `;
       overlay.innerHTML = `
         <div class="login-shell">
-          <div class="login-terminal">&gt; SECURE SESSION REQUIRED_</div>
-          <div class="login-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="login-terminal">&gt; 安全会话校验_</div>
+          <img src="app-icon.png" class="login-icon" alt="TapSulor">
           <h2 id="login-title"></h2>
           <p id="login-msg"></p>
           <div class="login-points"><span><b>01</b> 安全会话</span><span><b>02</b> 收益读取</span></div>
@@ -350,6 +351,8 @@
       totalRevenue: null,
       todayDAU: null,
       todayNewUsers: null,
+      todayImpression: null,     // 昨日广告曝光（impression_cnt）
+      monthRevenueList: null,    // 本月每日收入列表（供月末预估用）
       // 环比基准
       prevDayRevenue: null,      // 前一日收入（昨日环比）
       prevDayDAU: null,          // 前一日 DAU（昨日 DAU 环比）
@@ -359,6 +362,7 @@
       monthLoading: false,
       totalLoading: false,
       dauLoading: false,
+      impressionLoading: false,  // 曝光数据拉取中
       momLoading: false          // 环比拉取中
     }));
 
@@ -418,6 +422,26 @@
     return map;
   }
 
+  // 拉取曝光/点击/转化漏斗数据（position/cn 接口）
+  async function fetchGamePositionRange(appId, startDate, endDate) {
+    const url = `${POSITION_URL}?developer_id=${DEVELOPER_ID}&app_id=${appId}&start_date=${startDate}&end_date=${endDate}&platform=android`;
+    const json = await apiFetch(url).catch(() => null);
+    const map = {};
+    if (json && json.success && json.data && json.data.list) {
+      json.data.list.forEach(i => {
+        map[i.date] = {
+          impression: i.impression_cnt || 0,
+          click: i.click_cnt || 0,
+          clickRate: i.click_rate,
+          convDetail: i.convert_detail_cnt || 0,
+          convDetailRate: i.convert_detail_rate,
+          convTotal: i.convert_cnt || 0
+        };
+      });
+    }
+    return map;
+  }
+
   // 拉取所有已上线游戏的昨日收入、昨日日活、本月收入和环比
   async function fetchAllRevenue() {
     if (loadingRevenue) return;
@@ -433,11 +457,11 @@
     // 标记加载中
     publishedGames.forEach(g => {
       g.todayLoading = true; g.monthLoading = true; g.totalLoading = true;
-      g.dauLoading = true; g.momLoading = true;
+      g.dauLoading = true; g.impressionLoading = true; g.momLoading = true;
     });
     renderAll();
 
-    // 每个游戏 6 个独立请求并发，预估等本月收入+DAU完成后算
+    // 每个游戏 7 个独立请求并发，预估等本月收入完成后算
     const promises = publishedGames.map(async (g) => {
       const appId = g.appId;
 
@@ -473,10 +497,12 @@
       // 3) 本月收入区间（拿 total + list，list 供预估用）
       const p3 = fetchGameRevenue(appId, monthStart, today).then(monthData => {
         g.monthRevenue = monthData.total;
+        g.monthRevenueList = monthData.list || [];
         g.monthRevenueError = null;
       }).catch(e => {
         console.warn(`[${g.name}] 本月收入获取失败:`, e.message);
         g.monthRevenue = null;
+        g.monthRevenueList = null;
         g.monthRevenueError = e.message;
       }).finally(() => {
         g.monthLoading = false; renderAll();
@@ -523,8 +549,19 @@
         g.totalLoading = false; renderAll();
       });
 
+      // 7) 昨日曝光（position/cn 接口）
+      const p7 = fetchGamePositionRange(appId, dayBefore, yesterday).then(posMap => {
+        const yPos = posMap[yesterday];
+        g.todayImpression = yPos ? (yPos.impression || 0) : null;
+      }).catch(e => {
+        console.warn(`[${g.name}] 昨日曝光获取失败:`, e.message);
+        g.todayImpression = null;
+      }).finally(() => {
+        g.impressionLoading = false; renderAll();
+      });
+
       // 等全部完成
-      await Promise.all([p1, p2, p3, p4, p5, p6]);
+      await Promise.all([p1, p2, p3, p4, p5, p6, p7]);
     });
 
     await Promise.all(promises);
@@ -532,6 +569,51 @@
   }
 
   // ========== 渲染 ==========
+  // 月末预估：基于已发生每日收入，去掉两端极值（各 10%）后取稳健均值推算剩余天数
+  // dailyList: [{date:'YYYY-MM-DD', revenue:number}]（可来自单游戏或多游戏聚合）
+  // monthTotal: 本月截至目前累计收入（可空，空则用 dailyList 求和）
+  // 返回 {avg, projection, elapsedDays, remainingDays, daysInMonth, robustMean}
+  function computeMonthProjection(dailyList, monthTotal) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const todayNum = now.getDate();
+    const yesterdayNum = Math.max(1, todayNum - 1); // 今日数据可能不完整，不计入已过天数
+    const elapsedDays = yesterdayNum;
+    const remainingDays = daysInMonth - elapsedDays;
+
+    // 仅统计当月且已过日期的收入
+    const monthPrefix = `${y}-${String(m + 1).padStart(2, '0')}-`;
+    const values = [];
+    let listSum = 0;
+    (dailyList || []).forEach(d => {
+      if (!d || !d.date || !String(d.date).startsWith(monthPrefix)) return;
+      const day = parseInt(String(d.date).slice(8, 10), 10);
+      if (isNaN(day) || day < 1 || day > elapsedDays) return;
+      const rev = Number(d.revenue) || 0;
+      values.push(rev);
+      listSum += rev;
+    });
+
+    const total = (monthTotal != null && !isNaN(monthTotal)) ? Number(monthTotal) : listSum;
+    // 日均：累计 / 已过天数
+    const avg = elapsedDays > 0 ? total / elapsedDays : 0;
+
+    // 稳健日均值：排序后去掉最高/最低各 10%（至少各去 1 个，数据不足 3 天时退化为普通均值）
+    let robustMean = avg;
+    if (values.length >= 3) {
+      const sorted = [...values].sort((a, b) => a - b);
+      const trim = Math.max(1, Math.floor(sorted.length * 0.1));
+      const slice = sorted.slice(trim, sorted.length - trim);
+      if (slice.length > 0) {
+        robustMean = slice.reduce((s, v) => s + v, 0) / slice.length;
+      }
+    }
+
+    const projection = total + robustMean * remainingDays;
+    return { avg, projection, elapsedDays, remainingDays, daysInMonth, robustMean };
+  }
+
   // 只展示接口返回的真实结算金额；不使用 ARPU 估算替换昨日收入。
   function renderSummary(games) {
     const publishedGames = games.filter(g => g.published);
@@ -554,6 +636,31 @@
     renderAmount('summary-today', todayGot.map(g => g.todayRevenue), 600);
     renderAmount('summary-month', monthGot.map(g => g.monthRevenue), 600);
     renderAmount('summary-total', totalGot.map(g => g.totalRevenue), 800);
+
+    // 汇总区"日均 / 月末预估"（按日期聚合所有已拉取到本月日流水的游戏）
+    const avgEl = document.getElementById('summary-month-avg');
+    const projEl = document.getElementById('summary-month-proj');
+    const dailyByDate = {};
+    monthGot.forEach(g => {
+      if (Array.isArray(g.monthRevenueList)) {
+        g.monthRevenueList.forEach(d => {
+          if (!d || !d.date) return;
+          dailyByDate[d.date] = (dailyByDate[d.date] || 0) + (Number(d.revenue) || 0);
+        });
+      }
+    });
+    const mergedDaily = Object.keys(dailyByDate).map(date => ({ date, revenue: dailyByDate[date] }));
+    if (avgEl && projEl) {
+      if (mergedDaily.length === 0) {
+        avgEl.textContent = '日均 ¥—';
+        projEl.textContent = '月末预估 ¥—';
+      } else {
+        const proj = computeMonthProjection(mergedDaily, monthTotal);
+        avgEl.textContent = `日均 ¥${fmt(proj.avg)}`;
+        projEl.textContent = `月末预估 ¥${fmt(proj.projection)}`;
+      }
+    }
+
     const label = document.getElementById('summary-today-label');
     if (label) label.textContent = '昨日广告收益';
     const meta = document.getElementById('summary-total-meta');
@@ -702,6 +809,22 @@
                      ${lastMonthLine}`;
       }
 
+      // 昨日曝光块
+      let impressionHTML;
+      if (!g.published) {
+        impressionHTML = `<div class="game-metric-value muted">—</div>
+                          <div class="game-metric-label">昨日曝光</div>`;
+      } else if (g.impressionLoading) {
+        impressionHTML = `<div class="game-metric-value muted">加载中</div>
+                          <div class="game-metric-label">昨日曝光</div>`;
+      } else if (g.todayImpression == null) {
+        impressionHTML = `<div class="game-metric-value muted">—</div>
+                          <div class="game-metric-label">昨日曝光未同步</div>`;
+      } else {
+        impressionHTML = `<div class="game-metric-value">${fmtInt(g.todayImpression)}</div>
+                          <div class="game-metric-label">昨日曝光</div>`;
+      }
+
       // 名称下方展示累计广告收益金额
       let subHTML;
       if (!g.published) {
@@ -735,6 +858,9 @@
             </div>
             <div class="game-metric is-month">
               ${monthHTML}
+            </div>
+            <div class="game-metric is-impression">
+              ${impressionHTML}
             </div>
           </div>
         </div>
@@ -773,7 +899,7 @@
       const boot = document.getElementById('auth-boot');
       if (boot) boot.remove();
       document.getElementById('game-list').innerHTML = `
-        <div class="empty-state"><p>APP HOST REQUIRED</p><p>请从 Android 应用进入收益控制台</p></div>
+        <div class="empty-state"><p>需要宿主应用</p><p>请从 Android 应用进入收益控制台</p></div>
       `;
       return;
     }
@@ -971,14 +1097,6 @@
     });
   }
 
-  const toggleUnpublished = document.getElementById('toggle-unpublished');
-  if (toggleUnpublished) {
-    toggleUnpublished.addEventListener('change', () => {
-      showUnpublished = toggleUnpublished.checked;
-      renderAll();
-    });
-  }
-
   // ========== 设置面板 ==========
   const settingsBtn = document.getElementById('settings-btn');
   const settingsModal = document.getElementById('settings-modal');
@@ -1067,7 +1185,7 @@
     } catch (e) { /* ignore */ }
     const displayName = pickAccountDisplayName(acc);
     if (activeName) activeName.textContent = displayName;
-    if (activeId) activeId.textContent = `DEVELOPER ID / ${DEVELOPER_ID}`;
+    if (activeId) activeId.textContent = `开发者 ID / ${DEVELOPER_ID}`;
     if (activeAvatar) {
       const url = pickAccountAvatar(acc);
       if (url) {

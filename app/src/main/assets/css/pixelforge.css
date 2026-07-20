@@ -171,6 +171,8 @@ button{border-radius:0!important}
 .stat-tile-cumulative .stat-tile-value{font-size:23px;color:var(--accent-ink);text-shadow:2px 2px 0 rgba(255,255,255,.35)}
 [data-theme="dark"] .stat-tile-cumulative .stat-tile-value{color:var(--accent-2);text-shadow:2px 2px 0 rgba(0,0,0,.3)}
 .stat-tile-meta{font-family:PixelMono,monospace;font-size:8px;color:var(--text-tertiary);letter-spacing:1px;margin-top:6px}
+.meta-row{display:block;line-height:1.5}
+.meta-row+.meta-row{margin-top:1px}
 
 /* 月目标进度 */
 .month-goal-section{border-radius:0;background:var(--bg-card);border:2px solid var(--border-light);box-shadow:var(--shadow-card)}
@@ -286,6 +288,7 @@ button{border-radius:0!important}
 .login-symbol{width:64px;height:64px;margin-bottom:19px;display:grid;grid-template-columns:1fr 1fr;gap:5px;background:var(--accent);border:3px solid var(--accent-strong);padding:8px;box-shadow:3px 3px 0 var(--border-strong)}
 .login-symbol i{background:var(--bg-card)}
 .login-symbol i:nth-child(2),.login-symbol i:nth-child(3){background:var(--secondary)}
+.login-icon{width:64px;height:64px;margin-bottom:19px;display:block;object-fit:contain;border:3px solid var(--accent-strong);box-shadow:3px 3px 0 var(--border-strong);background:var(--bg-card);padding:4px}
 #login-title{font-size:23px!important;color:var(--text-primary)!important;margin:0 0 12px!important;text-shadow:2px 2px 0 var(--border-light)}
 #login-msg{font-size:13px!important;color:var(--text-secondary)!important;line-height:1.8!important;margin:0 0 22px!important}
 .login-points{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:22px}
@@ -324,7 +327,6 @@ button{border-radius:0!important}
   .game-card-top{padding:11px}
   .game-metrics{grid-template-columns:1fr 1fr}
   .game-metric{border-bottom:2px solid var(--border-light)}
-  .game-metric.is-month{grid-column:1/-1;border-bottom:0}
   .deck-title{font-size:13px}
   .deck-sub{display:none}
   .switch-wrap .switch-text{display:none}
