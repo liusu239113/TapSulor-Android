@@ -22,8 +22,11 @@ class ExplorerActivity : AppCompatActivity() {
             webViewClient = WebViewClient(); webChromeClient = WebChromeClient()
         }
         setContentView(webView)
-        val devId = AccountManager(this).getDeveloperId()
-        webView.loadUrl(if (devId != null) "https://developer.taptap.cn/v3/$devId/all-app" else "https://developer.taptap.cn/")
+        val accountManager = AccountManager(this)
+        val devId = accountManager.getDeveloperId()
+        accountManager.restoreCurrentCookies {
+            webView.loadUrl(if (devId != null) "https://developer.taptap.cn/v3/$devId/all-app" else "https://developer.taptap.cn/")
+        }
     }
 
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }

@@ -1,9 +1,15 @@
 package com.taptapgain
 
 import android.webkit.CookieManager
-import okhttp3.*
-import java.util.concurrent.TimeUnit
+import android.os.Handler
+import android.os.Looper
 import com.google.gson.Gson
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 class TapTapApiClient {
     private val gson = Gson()
@@ -12,42 +18,59 @@ class TapTapApiClient {
         .readTimeout(15, TimeUnit.SECONDS)
         .followRedirects(true)
         .cookieJar(object : CookieJar {
-            private val cookieStore = mutableMapOf<String, List<Cookie>>()
-
             override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                cookieStore[url.host] = cookies
-                try {
-                    val wc = CookieManager.getInstance()
-                    cookies.forEach { c -> wc.setCookie("${url.scheme}://${url.host}", "${c.name}=${c.value}; Domain=${c.domain}; Path=${c.path}") }
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { wc.flush() }
-                } catch (_: Exception) {}
+                val cookieManager = CookieManager.getInstance()
+                cookies.forEach { cookie ->
+                    val attributes = buildString {
+                        append(cookie.name).append('=').append(cookie.value)
+                        append("; Domain=").append(cookie.domain)
+                        append("; Path=").append(cookie.path)
+                        if (cookie.secure) append("; Secure")
+                    }
+                    cookieManager.setCookie("${url.scheme}://${url.host}", attributes)
+                }
+                Handler(Looper.getMainLooper()).post { cookieManager.flush() }
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                val result = mutableListOf<Cookie>()
-                cookieStore.forEach { (h, cs) -> if (url.host.endsWith(h) || h.endsWith(url.host)) result.addAll(cs.filter { it.matches(url) }) }
-                if (result.isEmpty()) {
+                val raw = CookieManager.getInstance().getCookie(url.toString()) ?: return emptyList()
+                return raw.split(';').mapNotNull { part ->
+                    val pair = part.trim().split('=', limit = 2)
+                    if (pair.size != 2 || pair[0].isBlank()) return@mapNotNull null
                     try {
-                        val cstr = CookieManager.getInstance().getCookie(url.toString()) ?: ""
-                        cstr.split(";").forEach { p ->
-                            val parts = p.trim().split("=", limit = 2)
-                            if (parts.size == 2) result.add(Cookie.Builder().name(parts[0].trim()).value(parts[1].trim()).domain(url.host).build())
-                        }
-                    } catch (_: Exception) {}
+                        Cookie.Builder()
+                            .name(pair[0].trim())
+                            .value(pair[1].trim())
+                            .domain(url.host)
+                            .path("/")
+                            .build()
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
-                return result
             }
-        }).build()
+        })
+        .build()
 
     data class FetchResult(val ok: Boolean, val status: Int, val body: String, val error: String?)
 
     suspend fun fetch(url: String): FetchResult {
         return try {
-            val req = Request.Builder().url(url).addHeader("User-Agent", "TapTapGain/1.0.1 Android").build()
-            val res = client.newCall(req).execute()
-            FetchResult(ok = res.isSuccessful, status = res.code, body = res.body?.string() ?: "", error = if (res.isSuccessful) null else "HTTP ${res.code}")
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", "TapTapGain/1.0.1 Android")
+                .addHeader("Accept", "application/json, text/plain, */*")
+                .build()
+            client.newCall(request).execute().use { response ->
+                FetchResult(
+                    ok = response.isSuccessful,
+                    status = response.code,
+                    body = response.body?.string() ?: "",
+                    error = if (response.isSuccessful) null else "HTTP ${response.code}"
+                )
+            }
         } catch (e: Exception) {
-            FetchResult(false, 0, "", e.message)
+            FetchResult(false, 0, "", e.message ?: "network_error")
         }
     }
 
@@ -59,29 +82,50 @@ class TapTapApiClient {
         if (me.status == 401 || me.status == 403) return CheckLoginResult("unauthenticated", null)
         if (!me.ok || me.status == 0) return CheckLoginResult("error", null, me.error ?: "network_error")
 
-        try {
-            val json = gson.fromJson(me.body, Map::class.java)
-            val data = json["data"] as? Map<*, *>
-            var devId = data?.get("developer_id") ?: data?.get("developerId")
-            if (devId == null) { val dev = data?.get("developer") as? Map<*, *>; devId = dev?.get("id") }
-            if (devId != null) return CheckLoginResult("ready", devId.toString())
-        } catch (_: Exception) {}
+        val meDeveloperId = extractDeveloperId(me.body)
+        if (meDeveloperId != null) return CheckLoginResult("ready", meDeveloperId)
 
         val list = fetch("https://$host/api/developer/v1/list")
-        if (list.ok) {
-            try {
-                val json = gson.fromJson(list.body, Map::class.java)
-                val d = json["data"] as? Map<*, *>
-                val items = d?.get("list") as? List<*>
-                if (!items.isNullOrEmpty()) {
-                    val first = items.first() as? Map<*, *>
-                    val id = first?.get("developer_id") ?: first?.get("developerId") ?: first?.get("id")
-                    if (id != null) return CheckLoginResult("ready", id.toString())
-                }
-                return CheckLoginResult("no-developer", null)
-            } catch (_: Exception) {}
-        }
+        if (list.status == 401 || list.status == 403) return CheckLoginResult("unauthenticated", null)
+        if (!list.ok || list.status == 0) return CheckLoginResult("error", null, list.error ?: "identity_unavailable")
 
-        return CheckLoginResult("error", null, "identity_unavailable")
+        val developerIds = extractDeveloperIds(list.body)
+        return if (developerIds.isNotEmpty()) {
+            CheckLoginResult("ready", developerIds.first())
+        } else {
+            CheckLoginResult("no-developer", null)
+        }
+    }
+
+    private fun extractDeveloperId(body: String): String? {
+        return try {
+            val root = gson.fromJson(body, Map::class.java)
+            val data = root["data"] as? Map<*, *>
+            val value = data?.get("developer_id")
+                ?: data?.get("developerId")
+                ?: (data?.get("developer") as? Map<*, *>)?.get("id")
+            value?.toString()?.takeIf { it.matches(Regex("\\d+")) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractDeveloperIds(body: String): List<String> {
+        return try {
+            val root = gson.fromJson(body, Map::class.java)
+            val data = root["data"]
+            val rawList = when (data) {
+                is Map<*, *> -> data["list"] ?: data["items"] ?: data["developers"]
+                is List<*> -> data
+                else -> null
+            } as? List<*> ?: emptyList<Any?>()
+            rawList.mapNotNull { item ->
+                val map = item as? Map<*, *>
+                val value = map?.get("developer_id") ?: map?.get("developerId") ?: map?.get("id")
+                value?.toString()?.takeIf { it.matches(Regex("\\d+")) }
+            }.distinct()
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 }
