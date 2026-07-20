@@ -61,11 +61,13 @@ class LoginActivity : AppCompatActivity() {
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    extractDeveloperIdFromUrl(url)?.let { finishLogin(it) }
                     scheduleLoginCheck(view)
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    extractDeveloperIdFromUrl(url)?.let { finishLogin(it) }
                     scheduleLoginCheck(view)
                 }
             }
@@ -89,6 +91,13 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    private fun extractDeveloperIdFromUrl(url: String?): String? {
+        val value = url ?: return null
+        val match = Regex("/(?:v3|developer|developer-center)/([0-9]+)(?:/|$)").find(value)
+            ?: Regex("[?&](?:developer_id|developerId|developerID)=([0-9]+)").find(value)
+        return match?.groupValues?.getOrNull(1)
+    }
+
     private fun scheduleLoginCheck(view: WebView?) {
         view ?: return
         view.postDelayed({ checkLogin(view) }, 900)
@@ -99,7 +108,7 @@ class LoginActivity : AppCompatActivity() {
         if (finished || isFinishing || nativeCheckAttempts >= 12) return
         nativeCheckAttempts++
         lifecycleScope.launch {
-            val result = apiClient.checkLoginStatus()
+            val result = apiClient.checkLoginStatus(accountManager.getDeveloperId())
             if (result.status == "ready" && result.developerId != null) {
                 finishLogin(result.developerId)
             } else if (!finished) {

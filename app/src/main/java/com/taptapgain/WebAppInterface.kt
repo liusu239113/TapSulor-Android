@@ -32,7 +32,7 @@ class WebAppInterface(
 
     @JavascriptInterface fun checkLogin() {
         scope.launch {
-            val result = apiClient.checkLoginStatus()
+            val result = apiClient.checkLoginStatus(accountManager.getDeveloperId())
             if (result.status == "ready" && result.developerId != null) {
                 accountManager.setDeveloperId(result.developerId, addMode = false)
                 accountManager.captureCurrentSessionCookies()

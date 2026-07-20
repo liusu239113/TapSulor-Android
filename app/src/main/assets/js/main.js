@@ -774,6 +774,14 @@
       });
       return;
     }
+    if (identity.status === 'identity-unresolved') {
+      showLoginOverlay('TapTap 登录有效，但暂时无法自动读取开发者主体。请在登录窗口进入任意一个开发者控制台后，应用会从控制台地址识别开发者 ID。', {
+        action: 'login',
+        title: '请选择开发者主体',
+        button: '打开开发者控制台'
+      });
+      return;
+    }
     if (identity.status === 'error') {
       showLoginOverlay('暂时无法验证 TapTap 登录状态，请检查网络后重试。', {
         action: 'retry',

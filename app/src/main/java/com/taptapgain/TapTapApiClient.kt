@@ -1,9 +1,10 @@
 package com.taptapgain
 
-import android.webkit.CookieManager
 import android.os.Handler
 import android.os.Looper
-import com.google.gson.Gson
+import android.webkit.CookieManager
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
@@ -14,7 +15,6 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 class TapTapApiClient {
-    private val gson = Gson()
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -40,12 +40,8 @@ class TapTapApiClient {
                     val pair = part.trim().split('=', limit = 2)
                     if (pair.size != 2 || pair[0].isBlank()) return@mapNotNull null
                     try {
-                        Cookie.Builder()
-                            .name(pair[0].trim())
-                            .value(pair[1].trim())
-                            .domain(url.host)
-                            .path("/")
-                            .build()
+                        Cookie.Builder().name(pair[0].trim()).value(pair[1].trim())
+                            .domain(url.host).path("/").build()
                     } catch (_: Exception) {
                         null
                     }
@@ -55,20 +51,22 @@ class TapTapApiClient {
         .build()
 
     data class FetchResult(val ok: Boolean, val status: Int, val body: String, val error: String?)
+    data class CheckLoginResult(val status: String, val developerId: String?, val error: String? = null)
 
     suspend fun fetch(url: String): FetchResult = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url(url)
-                .addHeader("User-Agent", "TapTapGain/1.0.1 Android")
+                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
                 .addHeader("Accept", "application/json, text/plain, */*")
+                .addHeader("Referer", "https://developer.taptap.cn/")
                 .build()
             client.newCall(request).execute().use { response ->
                 FetchResult(
-                    ok = response.isSuccessful,
-                    status = response.code,
-                    body = response.body?.string() ?: "",
-                    error = if (response.isSuccessful) null else "HTTP ${response.code}"
+                    response.isSuccessful,
+                    response.code,
+                    response.body?.string() ?: "",
+                    if (response.isSuccessful) null else "HTTP ${response.code}"
                 )
             }
         } catch (e: Exception) {
@@ -76,58 +74,108 @@ class TapTapApiClient {
         }
     }
 
-    data class CheckLoginResult(val status: String, val developerId: String?, val error: String? = null)
-
-    suspend fun checkLoginStatus(): CheckLoginResult {
+    suspend fun checkLoginStatus(configuredDeveloperId: String? = null): CheckLoginResult {
         val host = "developer.taptap.cn"
         val me = fetch("https://$host/api/user/v1/me")
         if (me.status == 401 || me.status == 403) return CheckLoginResult("unauthenticated", null)
         if (!me.ok || me.status == 0) return CheckLoginResult("error", null, me.error ?: "network_error")
 
-        val meDeveloperId = extractDeveloperId(me.body)
-        if (meDeveloperId != null) return CheckLoginResult("ready", meDeveloperId)
+        val allIds = linkedSetOf<String>()
+        allIds.addAll(extractDeveloperIds(me.body))
 
-        val list = fetch("https://$host/api/developer/v1/list")
-        if (list.status == 401 || list.status == 403) return CheckLoginResult("unauthenticated", null)
-        if (!list.ok || list.status == 0) return CheckLoginResult("error", null, list.error ?: "identity_unavailable")
+        val listEndpoints = listOf(
+            "https://$host/api/developer/v1/list",
+            "https://$host/api/developer/v1/developers",
+            "https://$host/api/user/v1/developers"
+        )
+        var anyListSucceeded = false
+        for (url in listEndpoints) {
+            val result = fetch(url)
+            if (result.status == 401 || result.status == 403) continue
+            if (result.ok) {
+                anyListSucceeded = true
+                allIds.addAll(extractDeveloperIds(result.body))
+            }
+        }
 
-        val developerIds = extractDeveloperIds(list.body)
-        return if (developerIds.isNotEmpty()) {
-            CheckLoginResult("ready", developerIds.first())
+        val configured = normalizeId(configuredDeveloperId)
+        if (configured != null) {
+            val permission = fetch("https://$host/api/app/v2/list?developer_id=$configured&page=1&pagesize=1")
+            if (permission.ok && responseIsSuccessful(permission.body)) {
+                return CheckLoginResult("ready", configured)
+            }
+        }
+
+        if (allIds.isNotEmpty()) {
+            return CheckLoginResult("ready", configured?.takeIf { it in allIds } ?: allIds.first())
+        }
+
+        return if (anyListSucceeded) {
+            CheckLoginResult("identity-unresolved", null, "developer_identity_not_found")
         } else {
-            CheckLoginResult("no-developer", null)
+            CheckLoginResult("identity-unresolved", null, "developer_list_unavailable")
         }
     }
 
-    private fun extractDeveloperId(body: String): String? {
+    private fun responseIsSuccessful(body: String): Boolean {
         return try {
-            val root = gson.fromJson(body, Map::class.java)
-            val data = root["data"] as? Map<*, *>
-            val value = data?.get("developer_id")
-                ?: data?.get("developerId")
-                ?: (data?.get("developer") as? Map<*, *>)?.get("id")
-            value?.toString()?.takeIf { it.matches(Regex("\\d+")) }
+            val root = JsonParser.parseString(body)
+            !root.isJsonObject || !root.asJsonObject.has("success") || root.asJsonObject.get("success").asBoolean
         } catch (_: Exception) {
-            null
+            true
         }
     }
 
     private fun extractDeveloperIds(body: String): List<String> {
         return try {
-            val root = gson.fromJson(body, Map::class.java)
-            val data = root["data"]
-            val rawList = when (data) {
-                is Map<*, *> -> data["list"] ?: data["items"] ?: data["developers"]
-                is List<*> -> data
-                else -> null
-            } as? List<*> ?: emptyList<Any?>()
-            rawList.mapNotNull { item ->
-                val map = item as? Map<*, *>
-                val value = map?.get("developer_id") ?: map?.get("developerId") ?: map?.get("id")
-                value?.toString()?.takeIf { it.matches(Regex("\\d+")) }
-            }.distinct()
+            val ids = linkedSetOf<String>()
+            collectDeveloperIds(JsonParser.parseString(body), ids)
+            ids.toList()
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    private fun collectDeveloperIds(element: JsonElement?, ids: MutableSet<String>) {
+        if (element == null || element.isJsonNull) return
+        if (element.isJsonArray) {
+            element.asJsonArray.forEach { collectDeveloperIds(it, ids) }
+            return
+        }
+        if (!element.isJsonObject) return
+
+        val obj = element.asJsonObject
+        listOf("developer_id", "developerId", "developerID").forEach { key ->
+            if (obj.has(key)) normalizeId(obj.get(key))?.let(ids::add)
+        }
+        if (obj.has("developer") && obj.get("developer").isJsonObject) {
+            val developer = obj.getAsJsonObject("developer")
+            if (developer.has("id")) normalizeId(developer.get("id"))?.let(ids::add)
+        }
+        obj.entrySet().forEach { (key, value) ->
+            if (key in setOf("data", "list", "items", "developers", "developer_list", "developerList", "user", "result")) {
+                collectDeveloperIds(value, ids)
+            }
+        }
+    }
+
+    private fun normalizeId(value: Any?): String? {
+        if (value == null) return null
+        if (value is JsonElement) {
+            if (!value.isJsonPrimitive) return null
+            val primitive = value.asJsonPrimitive
+            return when {
+                primitive.isString -> normalizeId(primitive.asString)
+                primitive.isNumber -> try { primitive.asBigDecimal.stripTrailingZeros().toPlainString().takeIf { it.all(Char::isDigit) } } catch (_: Exception) { null }
+                else -> null
+            }
+        }
+        if (value is Number) return value.toLong().toString().takeIf { it.all(Char::isDigit) }
+        val raw = value.toString().trim()
+        return when {
+            raw.all(Char::isDigit) && raw.isNotEmpty() -> raw
+            raw.matches(Regex("\\d+\\.0+")) -> raw.substringBefore('.')
+            else -> null
         }
     }
 }
