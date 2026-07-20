@@ -22,7 +22,7 @@
   'use strict';
 
   // 主题同步（设置在首页，存 localStorage）
-  document.documentElement.setAttribute('data-theme', localStorage.getItem('taptap_theme') === 'dark' ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', 'dark');
 
   const API_BASE = 'https://developer.taptap.cn/api';
   const REVENUE_URL = `${API_BASE}/mini-app/v1/ad/payout-report-data`;
@@ -136,7 +136,7 @@
     const total = json.data.total != null
       ? parseFloat(json.data.total)
       : list.reduce((s, i) => s + (parseFloat(i.revenue) || 0), 0);
-    return { total, list };
+    return { ok: true, total, list };
   }
 
   // 获取某日期范围的每日日活，返回 { 'YYYY-MM-DD': { dau, newUsers } }
@@ -231,7 +231,7 @@
     const [revRes, dauMap, posMap, durMap] = await Promise.all([
       fetchGameRevenue(currentGame.appId, start, end).catch(e => {
         console.warn('收入获取失败:', e.message);
-        return { total: 0, list: [] };
+        return { ok: false, total: null, list: [], error: e.message };
       }),
       fetchGameDAURange(currentGame.appId, start, liveEnd).catch(e => {
         console.warn('DAU 获取失败:', e.message);
@@ -251,61 +251,39 @@
     (revRes.list || []).forEach(item => {
       dailyMap[item.date] = {
         date: item.date,
-        revenue: parseFloat(item.revenue) || 0,
+        revenue: Number.isFinite(parseFloat(item.revenue)) ? parseFloat(item.revenue) : null,
         dau: 0,
         newUsers: 0
       };
     });
     Object.entries(dauMap).forEach(([date, info]) => {
       if (!dailyMap[date]) {
-        dailyMap[date] = { date, revenue: 0, dau: 0, newUsers: 0 };
+        dailyMap[date] = { date, revenue: null, dau: 0, newUsers: 0 };
       }
       dailyMap[date].dau = info.dau;
       dailyMap[date].newUsers = info.newUsers;
     });
     Object.entries(posMap).forEach(([date, info]) => {
       if (!dailyMap[date]) {
-        dailyMap[date] = { date, revenue: 0, dau: 0, newUsers: 0 };
+        dailyMap[date] = { date, revenue: null, dau: 0, newUsers: 0 };
       }
       Object.assign(dailyMap[date], info);
     });
     Object.entries(durMap).forEach(([date, v]) => {
       if (!dailyMap[date]) {
-        dailyMap[date] = { date, revenue: 0, dau: 0, newUsers: 0 };
+        dailyMap[date] = { date, revenue: null, dau: 0, newUsers: 0 };
       }
       dailyMap[date].durationAvg = v;
     });
 
     const dailyList = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
-    const monthTotal = revRes.total || dailyList.reduce((s, d) => s + d.revenue, 0);
-    const monthDau = dailyList.reduce((s, d) => s + d.dau, 0);
-
-    // 收益 T+1 未结算：用「本月已结算天」的平均每活跃收益 × 当日活跃 做预估
-    // 结算在次日 8:45 左右，故 8:45 前「昨天」也视为未结算，一并预估避免误显 ¥0
-    if (currentSelectedMonth === currentMonthStr()) {
-      let realRev = 0, realDau = 0;
-      dailyList.forEach(d => {
-        if (d.revenue > 0 && d.dau > 0) { realRev += d.revenue; realDau += d.dau; }
-      });
-      const avgArpu = realDau > 0 ? realRev / realDau : 0; // 元/活跃
-      if (avgArpu > 0) {
-        const cutoff = new Date(); cutoff.setHours(8, 45, 0, 0);
-        const pend = new Date();
-        if (new Date() < cutoff) pend.setDate(pend.getDate() - 1);
-        const pendStart = formatDate(pend); // 未结算起点（8:45 前含昨天）
-        const todayS = todayStr();
-        dailyList.forEach(d => {
-          if (d.date >= pendStart && d.date <= todayS && d.revenue === 0 && d.dau > 0) {
-            d.isEstimate = true;
-            d.estRevenue = avgArpu * d.dau;
-            d.estArpuPct = avgArpu * 100;
-          }
-        });
-      }
-    }
+    const monthTotal = revRes.ok === false
+      ? null
+      : (revRes.total != null ? revRes.total : dailyList.reduce((s, d) => s + (d.revenue || 0), 0));
+    const monthDau = dailyList.reduce((s, d) => s + (d.dau || 0), 0);
 
     console.log(`[${currentGame.name}] ${yearMonth} 查询范围 ${start}~${end}(实时至${liveEnd}), 收入${revRes.list.length}条, DAU${Object.keys(dauMap).length}条, 转化效果${Object.keys(posMap).length}条, 合并后${dailyList.length}天`);
-    return { dailyList, monthTotal, monthDau };
+    return { dailyList, monthTotal, monthDau, revenueOk: revRes.ok !== false };
   }
 
   // 计算月份的查询范围（当前月只查到昨天）
@@ -324,15 +302,15 @@
   async function probeGrandTotal() {
     if (!isElectron) {
       // 浏览器预览模式
-      grandTotal = 88888.88;
-      earliestMonth = '2024-03';
+      grandTotal = null;
+      earliestMonth = currentMonthStr();
       updateMonthTitle();
       renderGrandTotal();
       return;
     }
     try {
       const data = await fetchGameRevenue(currentGame.appId, '2020-01-01', yesterdayStr());
-      grandTotal = data.total || 0;
+      grandTotal = data.total != null ? data.total : null;
       if (data.list && data.list.length > 0) {
         const sorted = [...data.list].sort((a, b) => a.date.localeCompare(b.date));
         earliestMonth = sorted[0].date.substring(0, 7);
@@ -342,7 +320,7 @@
     } catch (e) {
       console.warn('探测失败:', e.message);
       earliestMonth = currentMonthStr();
-      grandTotal = 0;
+      grandTotal = null;
     }
     updateMonthTitle();
     renderGrandTotal();
@@ -353,8 +331,12 @@
     if (!isElectron) {
       // 模拟
       renderOverview({
-        yesterdayRevenue: 127.36, yesterdayDAU: 355, monthRevenue: 3210.50,
-        prevDayRevenue: 98.20, prevDayDAU: 310, lastMonthRevenue: 2890.00
+        yesterdayRevenue: null,
+        yesterdayDAU: null,
+        monthRevenue: null,
+        prevDayRevenue: null,
+        prevDayDAU: null,
+        lastMonthRevenue: null
       });
       return;
     }
@@ -368,7 +350,7 @@
     const [rev2d, dau2dMap, monthRev, lastMonthRev] = await Promise.all([
       fetchGameRevenue(currentGame.appId, dayBefore, yesterday).catch(e => {
         console.warn('近2天收入获取失败:', e.message);
-        return { total: 0, list: [] };
+        return { ok: false, total: null, list: [], error: e.message };
       }),
       fetchGameDAURange(currentGame.appId, dayBefore, yesterday).catch(e => {
         console.warn('近2天 DAU 获取失败:', e.message);
@@ -376,7 +358,7 @@
       }),
       fetchGameRevenue(currentGame.appId, monthStart, today).catch(e => {
         console.warn('本月收入获取失败:', e.message);
-        return { total: 0 };
+        return { ok: false, total: null, list: [], error: e.message };
       }),
       fetchGameRevenue(currentGame.appId, lmRange.start, lmRange.end).catch(e => {
         console.warn('上月同期收入获取失败:', e.message);
@@ -388,14 +370,16 @@
     const revList = rev2d.list || [];
     const yRevItem = revList.find(i => i.date === yesterday);
     const dRevItem = revList.find(i => i.date === dayBefore);
-    const yesterdayRevenue = yRevItem ? (parseFloat(yRevItem.revenue) || 0) : (rev2d.total || 0);
+    const yesterdayRevenue = rev2d.ok === false
+      ? null
+      : (yRevItem ? (parseFloat(yRevItem.revenue) || 0) : null);
     const prevDayRevenue = dRevItem ? (parseFloat(dRevItem.revenue) || 0) : null;
 
     // 从近2天 DAU map 取昨天和前天
     const yesterdayDAU = (dau2dMap[yesterday] && dau2dMap[yesterday].dau) || 0;
     const prevDayDAU = (dau2dMap[dayBefore] && dau2dMap[dayBefore].dau) || null;
 
-    const monthRevenue = monthRev.total || 0;
+    const monthRevenue = monthRev.ok === false ? null : monthRev.total;
     const lastMonthRevenue = lastMonthRev.total;
 
     renderOverview({
@@ -557,7 +541,13 @@
     document.getElementById('detail-game-id').textContent = 'ID: ' + game.appId;
     const iconEl = document.getElementById('detail-game-icon');
     if (game.icon) {
-      iconEl.innerHTML = `<img src="${game.icon}" alt="${game.name}" onerror="this.style.display='none';this.parentElement.textContent='${game.name ? game.name.charAt(0) : '?'}';">`;
+      const img = document.createElement('img');
+      img.src = game.icon;
+      img.alt = game.name || '应用图标';
+      img.addEventListener('error', () => {
+        iconEl.textContent = game.name ? game.name.charAt(0) : '?';
+      }, { once: true });
+      iconEl.replaceChildren(img);
     } else {
       iconEl.textContent = game.name ? game.name.charAt(0) : '?';
     }
@@ -565,11 +555,11 @@
 
   function renderOverview(data) {
     if (!data) return;
-    document.getElementById('ov-yesterday-rev').textContent = '¥' + fmt(data.yesterdayRevenue);
+    document.getElementById('ov-yesterday-rev').textContent = data.yesterdayRevenue == null ? '暂无' : '¥' + fmt(data.yesterdayRevenue);
     document.getElementById('ov-yesterday-dau').textContent = fmtInt(data.yesterdayDAU);
-    const conv = data.yesterdayDAU > 0 ? (data.yesterdayRevenue / data.yesterdayDAU * 100) : 0;
-    document.getElementById('ov-conversion').textContent = '转化率 ' + conv.toFixed(1) + '%';
-    document.getElementById('ov-month-rev').textContent = '¥' + fmt(data.monthRevenue);
+    const conv = data.yesterdayRevenue != null && data.yesterdayDAU > 0 ? (data.yesterdayRevenue / data.yesterdayDAU * 100) : null;
+    document.getElementById('ov-conversion').textContent = conv == null ? '转化率 —' : '转化率 ' + conv.toFixed(1) + '%';
+    document.getElementById('ov-month-rev').textContent = data.monthRevenue == null ? '暂无' : '¥' + fmt(data.monthRevenue);
 
     // 环比标签
     const momRevEl = document.getElementById('mom-ov-rev');
@@ -589,10 +579,10 @@
   }
 
   function renderMonthSummary(data) {
-    if (!data) {
-      document.getElementById('ms-total').textContent = '¥0.00';
-      document.getElementById('ms-dau').textContent = '0';
-      document.getElementById('ms-conv').textContent = '0%';
+    if (!data || data.monthTotal == null) {
+      document.getElementById('ms-total').textContent = '暂无';
+      document.getElementById('ms-dau').textContent = data ? fmtInt(data.monthDau) : '—';
+      document.getElementById('ms-conv').textContent = '—';
       return;
     }
     document.getElementById('ms-total').textContent = '¥' + fmt(data.monthTotal);
@@ -605,6 +595,7 @@
     const grid = document.getElementById('daily-grid');
     const dailyList = (data && data.dailyList) ? data.dailyList : [];
     const isCurrentMonth = currentSelectedMonth === currentMonthStr();
+    const revenueUnavailable = data && data.revenueOk === false;
 
     // 过去的月份且完全无数据：直接提示（未来/当前月仍渲染整月网格）
     if (dailyList.length === 0 && !isCurrentMonth) {
@@ -638,7 +629,8 @@
       const rec = map[dateStr];
       const isToday = dateStr === todayS;
       const isFuture = dateStr > todayS;
-      const hasData = !!(rec && (rec.revenue > 0 || rec.dau > 0));
+      const hasRevenue = !!(rec && rec.revenue != null);
+      const hasData = !!(rec && (hasRevenue || rec.dau > 0));
 
       const animStyle = `animation: cardIn 0.3s ease-out both; animation-delay: ${Math.min(day - 1, 24) * 12}ms;`;
 
@@ -650,16 +642,10 @@
         cls += ' is-future';
         inner = `<div class="dc-day">${day}</div>` +
                 `<div class="dc-placeholder">·</div>`;
-      } else if (rec && rec.isEstimate) {
-        // 收益未结算（今日 / 8:45 前的昨日）：展示按本月均值估算的预估收益
-        if (isToday) cls += ' is-today';
-        inner = `<div class="dc-day">${day}</div>` +
-                `<div class="dc-revenue dc-est">≈¥${fmt(rec.estRevenue)}</div>` +
-                `<div class="dc-sub">${fmtInt(rec.dau)} · <span class="dc-est-tag">预估</span></div>`;
       } else if (isToday) {
         // 今日：美术强调；收入为 T+1，通常次日才更新
         cls += ' is-today';
-        if (hasData) {
+        if (hasRevenue) {
           const conv = rec.dau > 0 ? (rec.revenue / rec.dau * 100).toFixed(0) + '%' : '—';
           inner = `<div class="dc-day">${day}</div>` +
                   `<div class="dc-revenue">¥${fmt(rec.revenue)}</div>` +
@@ -671,13 +657,13 @@
         }
       } else {
         // 过去的一天：有数据则展示，缺失记为 0
-        const revenue = rec ? rec.revenue : 0;
-        const dau = rec ? rec.dau : 0;
-        const conv = dau > 0 ? (revenue / dau * 100).toFixed(0) + '%' : '—';
-        if (revenue === 0 && dau === 0) cls += ' is-empty';
-        inner = `<div class="dc-day">${day}</div>` +
-                `<div class="dc-revenue">¥${fmt(revenue)}</div>` +
-                `<div class="dc-sub">${fmtInt(dau)} · <span class="dc-conv">${conv}</span></div>`;
+      const revenue = rec ? rec.revenue : null;
+      const dau = rec ? rec.dau : 0;
+      const conv = revenue != null && dau > 0 ? (revenue / dau * 100).toFixed(0) + '%' : '—';
+      if (!rec || (revenue == null && dau === 0)) cls += ' is-empty';
+      inner = `<div class="dc-day">${day}</div>` +
+              `<div class="dc-revenue">${revenue == null ? '未同步' : '¥' + fmt(revenue)}</div>` +
+              `<div class="dc-sub">${fmtInt(dau)} · <span class="dc-conv">${conv}</span></div>`;
       }
 
       // 非未来日期可点击查看当天详情
@@ -739,9 +725,9 @@
   function openDayDetail(dateStr) {
     const overlay = ensureDayModal();
     const list = (currentMonthData && currentMonthData.dailyList) ? currentMonthData.dailyList : [];
-    const rec = list.find(d => d.date === dateStr) || { date: dateStr, revenue: 0, dau: 0, newUsers: 0 };
+    const rec = list.find(d => d.date === dateStr) || { date: dateStr, revenue: null, dau: 0, newUsers: 0 };
     const isToday = dateStr === todayStr();
-    const noData = !(rec.revenue > 0 || rec.dau > 0);
+    const noData = !(rec.revenue != null || rec.dau > 0);
 
     const [y, m, d] = dateStr.split('-').map(Number);
     const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -752,13 +738,11 @@
 
     // —— 经营数据：收益(主) + 活跃 / 新增 / 转化率 / 日均时长 ——
     // 收益 T+1 未结算时，用本月均值转化率 × 当日活跃 做预估，样式作区分
-    const isEst = !!rec.isEstimate;
-    const arpuPct = rec.dau > 0 ? (rec.revenue / rec.dau * 100) : 0;
-    const heroValue = isEst ? ('≈¥' + fmt(rec.estRevenue)) : ('¥' + fmt(rec.revenue));
-    const heroLabel = (isEst && isToday) ? '今日预估收益' : '预估收益';
-    const convDisplay = isEst
-      ? (rec.estArpuPct != null ? rec.estArpuPct.toFixed(1) + '%' : '—')
-      : (rec.dau > 0 ? arpuPct.toFixed(1) + '%' : '—');
+    const isEst = false;
+    const arpuPct = rec.revenue != null && rec.dau > 0 ? (rec.revenue / rec.dau * 100) : null;
+    const heroValue = rec.revenue == null ? '暂无' : ('¥' + fmt(rec.revenue));
+    const heroLabel = rec.revenue == null ? '真实收益未同步' : '已结算收益';
+    const convDisplay = arpuPct == null ? '—' : arpuPct.toFixed(1) + '%';
     const durVal = rec.durationAvg;
     const durDisplay = (durVal != null && durVal !== '' && durVal !== '-' && parseFloat(durVal) > 0) ? (durVal + '分') : '—';
     const bizSection =
@@ -767,7 +751,7 @@
           '<span class="dm-hero-label">' + heroLabel + '</span>' +
           '<span class="dm-hero-value">' + heroValue + '</span>' +
         '</div>' +
-        (isEst ? '<div class="dm-est-note">按本月均值转化率 × 当日活跃估算<br>实际收益次日 8:45 左右结算</div>' : '') +
+        (rec.revenue == null ? '<div class="dm-pending-tip">该日真实收益尚未同步，未使用预估值。</div>' : '') +
         '<div class="dm-grid dm-grid-4">' +
           dmCell('活跃', fmtInt(rec.dau)) +
           dmCell('新增', fmtInt(rec.newUsers)) +
@@ -794,8 +778,8 @@
       '</div>';
 
     const body = document.getElementById('day-modal-body');
-    const tip = (isToday && !isEst && rec.revenue === 0)
-      ? '<div class="dm-pending-tip">今日收益一般次日 8:45 左右结算，当前展示实时活跃/新增～</div>'
+    const tip = (isToday && rec.revenue == null)
+      ? '<div class="dm-pending-tip">今日真实收益尚未结算，当前只展示已返回的活跃数据。</div>'
       : '';
     body.innerHTML = tip + bizSection + funnelSection;
 
@@ -815,12 +799,11 @@
   let trendGeom = null;             // { xs:[], series:[{key,color,ys:[]}] } 供悬停高亮定位
 
   function trendValue(rec, key) {
-    if (key === 'revenue') return rec.isEstimate ? (rec.estRevenue || 0) : (rec.revenue || 0);
+    if (key === 'revenue') return rec.revenue == null ? null : rec.revenue;
     if (key === 'impression') return rec.impression || 0;
     if (key === 'dau') return rec.dau || 0;
     if (key === 'conv') {
-      if (rec.isEstimate) return rec.estArpuPct || 0;
-      return rec.dau > 0 ? (rec.revenue / rec.dau * 100) : 0;
+      return rec.revenue != null && rec.dau > 0 ? (rec.revenue / rec.dau * 100) : null;
     }
     return 0;
   }
@@ -1001,7 +984,9 @@
     const W = Math.max(320, w), H = 180;
     const ax = trendAxis(pts, W, H);
     const vals = pts.map(d => trendValue(d, key));
-    const niceMax = niceCeil(Math.max.apply(null, vals));
+    const realVals = vals.filter(v => v != null);
+    if (realVals.length === 0) return '<div class="trend-empty">暂无真实收入数据</div>';
+    const niceMax = niceCeil(Math.max.apply(null, realVals));
     const y = v => ax.padT + ax.innerH * (1 - v / niceMax);
     const ys = vals.map(y);
     trendGeom = { xs: pts.map((d, i) => ax.x(i)), series: [{ key: key, color: color, ys: ys }] };
@@ -1017,7 +1002,7 @@
     const isEstMetric = (key === 'revenue' || key === 'conv');
     let dots = '';
     pts.forEach((d, i) => {
-      dots += '<circle class="trend-pt' + (isEstMetric && d.isEstimate ? ' is-est' : '') + '" cx="' + ax.x(i) + '" cy="' + ys[i] + '" r="2.3"/>';
+      dots += '<circle class="trend-pt" cx="' + ax.x(i) + '" cy="' + ys[i] + '" r="2.3"/>';
     });
     return '<svg class="trend-svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" preserveAspectRatio="xMidYMid meet" style="--tc:' + color + '">' +
              grid + '<path class="trend-area" d="' + area + '"/>' +
@@ -1064,7 +1049,7 @@
     const card = ensureTrendCard();
     if (!card) return;
     const list = (data && data.dailyList) ? data.dailyList : [];
-    const pts = list.filter(d => (d.revenue > 0 || d.dau > 0 || (d.impression || 0) > 0));
+    const pts = list.filter(d => (d.revenue != null || d.dau > 0 || (d.impression || 0) > 0));
     trendPts = pts;
     const tabs = card.querySelector('#trend-tabs');
     const tabDefs = [{ key: 'all', label: '全部', color: '#334155' }].concat(TREND_METRICS);

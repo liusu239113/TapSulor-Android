@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0F0F23">
-  <title>收益像素站</title>
+  <title>TapSulor</title>
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/pixelforge.css">
 </head>
@@ -16,15 +16,12 @@
         <div class="pixel-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <div class="brand-copy">
           <span class="eyebrow">AD REVENUE CONSOLE</span>
-          <h1>收益像素站</h1>
+          <h1>TapSulor</h1>
         </div>
       </div>
       <div class="topbar-right">
         <button class="icon-btn" title="同步数据" id="refresh-btn" aria-label="同步数据">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 9A8 8 0 0 0 6.2 5.5L4 10M4 15a8 8 0 0 0 13.8 3.5L20 14"/></svg>
-        </button>
-        <button class="icon-btn" title="账号与设置" id="settings-btn" aria-label="账号与设置">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/></svg>
         </button>
       </div>
     </header>
@@ -40,27 +37,22 @@
 
     <section class="summary-total-banner" id="summary-total-banner">
       <div class="summary-scanline"></div>
-      <div class="summary-total-label">全账号当前视图 / 累计广告收益</div>
+      <div class="summary-total-label">当前账号 / 累计已结算广告收益</div>
       <div class="summary-total-amount" id="summary-total">¥0.00</div>
       <div class="summary-total-meta" id="summary-total-meta">等待数据同步</div>
       <div class="summary-status"><span></span> SESSION ONLINE</div>
     </section>
 
     <div class="summary-grid">
-      <div class="summary-card summary-estimate">
-        <div class="summary-label">今日预估</div>
-        <div class="summary-amount" id="summary-estimate">¥0.00</div>
-        <small>LIVE ESTIMATE</small>
-      </div>
       <div class="summary-card summary-today">
-        <div class="summary-label" id="summary-today-label">昨日收入</div>
+        <div class="summary-label" id="summary-today-label">昨日已结算</div>
         <div class="summary-amount" id="summary-today">¥0.00</div>
-        <small>YESTERDAY</small>
+        <small>SETTLED YESTERDAY</small>
       </div>
       <div class="summary-card summary-month">
-        <div class="summary-label">本月收入</div>
+        <div class="summary-label">本月已结算</div>
         <div class="summary-amount" id="summary-month">¥0.00</div>
-        <small>THIS MONTH</small>
+        <small>SETTLED THIS MONTH</small>
       </div>
     </div>
 
@@ -79,19 +71,7 @@
     </div>
     <div class="game-list" id="game-list"><div class="loading-tip">LOADING DATA...</div></div>
 
-    <div class="api-panel" id="api-panel">
-      <div class="api-panel-header">
-        <span class="api-panel-title">API DEBUG <span class="api-count-badge" id="api-count">0</span></span>
-        <div class="api-panel-actions">
-          <button class="api-action-btn primary" id="api-replay-btn">重放并保存</button>
-          <button class="api-action-btn" id="api-open-btn">探测后台</button>
-          <button class="api-action-btn" id="api-clear-btn">清空</button>
-        </div>
-      </div>
-      <div class="api-list" id="api-list"><div class="api-empty">打开探测窗口后，网络记录将在此显示</div></div>
-    </div>
-
-    <footer class="app-footer"><span>PIXEL REVENUE CONSOLE / v1.1</span></footer>
+    <footer class="app-footer"><span>TapSulor / v1.0.0</span></footer>
 
     <div class="settings-modal" id="settings-modal" hidden>
       <div class="settings-overlay" id="settings-overlay"></div>
@@ -108,15 +88,7 @@
             <div class="account-add-hint" id="account-add-hint">请在打开的 TapTap 页面完成登录</div>
           </div>
           <div class="settings-divider"></div>
-          <div class="settings-item"><div class="settings-item-text"><div class="settings-item-title">夜间像素模式</div><div class="settings-item-desc">PixelForge 高对比深色界面</div></div><label class="switch"><input type="checkbox" id="setting-dark"><span class="switch-slider"></span></label></div>
-          <div class="settings-divider"></div>
-          <div class="settings-item"><div class="settings-item-text"><div class="settings-item-title">API 调试模块</div><div class="settings-item-desc">显示后台请求探测工具</div></div><label class="switch"><input type="checkbox" id="setting-explorer"><span class="switch-slider"></span></label></div>
-          <div class="settings-divider"></div>
-          <div class="settings-item"><div class="settings-item-text"><div class="settings-item-title">自动同步</div><div class="settings-item-desc">每 5 分钟刷新实时收益</div></div><label class="switch"><input type="checkbox" id="setting-autorefresh"><span class="switch-slider"></span></label></div>
-          <div class="settings-divider"></div>
-          <div class="settings-block"><div class="settings-item-text"><div class="settings-item-title">月度收益目标</div><div class="settings-item-desc">设置首页任务进度</div></div><div class="settings-goal-input"><span class="settings-goal-prefix">¥</span><input type="number" id="setting-month-goal" min="0" step="100" placeholder="0"><button class="settings-goal-save" id="setting-month-goal-save">保存</button></div></div>
-          <div class="settings-divider"></div>
-          <div class="settings-about"><div class="settings-about-title">SYSTEM</div><div class="settings-about-row"><span>版本</span><span>1.1 / ANDROID</span></div></div>
+          <div class="settings-about"><div class="settings-about-title">SYSTEM</div><div class="settings-about-row"><span>版本</span><span>TapSulor / 1.0.0</span></div></div>
         </div>
       </div>
     </div>

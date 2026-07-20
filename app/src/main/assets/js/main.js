@@ -14,21 +14,8 @@
 
   // ========== 主题与设置（最早执行，避免白闪） ==========
   const SETTINGS_KEYS = {
-    theme: 'taptap_theme',
-    explorer: 'taptap_explorer',
-    autorefresh: 'taptap_autorefresh',
     monthGoal: 'taptap_month_goal'
   };
-  function applyTheme() {
-    const dark = localStorage.getItem(SETTINGS_KEYS.theme) === 'dark';
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  }
-  function applyExplorer() {
-    const on = localStorage.getItem(SETTINGS_KEYS.explorer) === '1';
-    document.documentElement.classList.toggle('explorer-on', on);
-  }
-  applyTheme();
-  applyExplorer();
 
   const API_BASE = 'https://developer.taptap.cn/api';
   // developer_id 从主进程配置动态获取（支持多账号），init() 里赋值
@@ -44,6 +31,20 @@
   let showUnpublished = false;
   let loadingRevenue = false;
   let firstRenderDone = false;  // 卡片错落淡入只在首次加载/手动刷新时触发
+
+  const sounds = {
+    click: new Audio('audio/tapsulor_pixel_click.mp3'),
+    switch: new Audio('audio/tapsulor_pixel_switch.mp3'),
+    refresh: new Audio('audio/tapsulor_pixel_refresh.mp3')
+  };
+  Object.values(sounds).forEach(sound => { sound.preload = 'auto'; });
+
+  function playSfx(name) {
+    const sound = sounds[name];
+    if (!sound) return;
+    sound.currentTime = 0;
+    sound.play().catch(() => {});
+  }
 
   // ========== 工具 ==========
   function fmt(n) {
@@ -258,6 +259,35 @@
   }
 
   // ========== 数据获取 ==========
+  function normalizeAssetUrl(value) {
+    if (!value) return null;
+    const candidate = typeof value === 'string'
+      ? value
+      : value.url || value.medium_url || value.small_url || value.large_url || value.src || null;
+    if (!candidate || typeof candidate !== 'string') return null;
+    try {
+      const url = new URL(candidate, window.location.href);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+      return url.href;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function escapeHTML(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getAppIcon(app) {
+    const icon = app.icon || app.icon_url || app.iconUrl || app.logo || app.cover;
+    return normalizeAssetUrl(icon);
+  }
+
   async function fetchAppList() {
     const json = await apiFetch(APP_LIST_URL);
     if (!json.success || !json.data || !json.data.list) {
@@ -267,7 +297,7 @@
     GAMES = json.data.list.map(app => ({
       appId: String(app.id),
       name: app.title,
-      icon: app.icon && app.icon.medium_url ? app.icon.medium_url : (app.icon && app.icon.url),
+      icon: getAppIcon(app),
       published: app.review_status && app.review_status.value === 4,
       todayRevenue: null,
       monthRevenue: null,
@@ -278,15 +308,11 @@
       prevDayRevenue: null,      // 前一日收入（昨日环比）
       prevDayDAU: null,          // 前一日 DAU（昨日 DAU 环比）
       lastMonthRevenue: null,    // 上月同期收入（本月环比）
-      // 今日预估
-      todayEstimate: null,       // 预估收益（元）
-      todayEstimateArpu: null,   // 预估用的 ARPU（元/活跃）
       // loading 标志
       todayLoading: false,
       monthLoading: false,
       totalLoading: false,
       dauLoading: false,
-      estimateLoading: false,
       momLoading: false          // 环比拉取中
     }));
 
@@ -346,31 +372,7 @@
     return map;
   }
 
-  // 今日预估收益：用本月已结算天（revenue>0 且 dau>0）的平均每活跃收益 × 今日活跃
-  // 收益 T+1 结算，今日/8:45 前的昨日都没有真实收益，用 ARPU 估算
-  // revenueList: fetchGameRevenue 返回的 list；dauMap: fetchGameDAURange 返回的 map
-  function computeTodayEstimate(revenueList, dauMap) {
-    const today = todayStr();
-    const todayDAU = dauMap[today] ? dauMap[today].dau : 0;
-    if (todayDAU <= 0) return { estimate: 0, todayDAU: 0, arpu: 0 };
-
-    // 本月已结算天：revenue > 0 且 dau > 0（排除未结算的 0 收益天）
-    let realRev = 0, realDau = 0;
-    revenueList.forEach(item => {
-      const date = item.date;
-      const rev = parseFloat(item.revenue) || 0;
-      const dau = (dauMap[date] && dauMap[date].dau) || 0;
-      if (rev > 0 && dau > 0) {
-        realRev += rev;
-        realDau += dau;
-      }
-    });
-    const arpu = realDau > 0 ? realRev / realDau : 0;
-    const estimate = arpu * todayDAU;
-    return { estimate, todayDAU, arpu };
-  }
-
-  // 拉取所有已上线游戏的昨日收入 + 昨日日活 + 本月收入 + 环比 + 今日预估
+  // 拉取所有已上线游戏的昨日收入、昨日日活、本月收入和环比
   async function fetchAllRevenue() {
     if (loadingRevenue) return;
     loadingRevenue = true;
@@ -385,26 +387,26 @@
     // 标记加载中
     publishedGames.forEach(g => {
       g.todayLoading = true; g.monthLoading = true; g.totalLoading = true;
-      g.dauLoading = true; g.estimateLoading = true; g.momLoading = true;
+      g.dauLoading = true; g.momLoading = true;
     });
     renderAll();
 
     // 每个游戏 6 个独立请求并发，预估等本月收入+DAU完成后算
     const promises = publishedGames.map(async (g) => {
       const appId = g.appId;
-      let monthRevList = [];
-      let monthDauMap = {};
 
       // 1) 近2天收入区间（拿昨天 + 前天）
       const p1 = fetchGameRevenue(appId, dayBefore, yesterday).then(rev2d => {
         const list = rev2d.list || [];
         const yItem = list.find(i => i.date === yesterday);
         const dItem = list.find(i => i.date === dayBefore);
-        g.todayRevenue = yItem ? (parseFloat(yItem.revenue) || 0) : 0;
+        g.todayRevenue = yItem ? (parseFloat(yItem.revenue) || 0) : null;
         g.prevDayRevenue = dItem ? (parseFloat(dItem.revenue) || 0) : null;
+        g.todayRevenueError = null;
       }).catch(e => {
         console.warn(`[${g.name}] 近2天收入获取失败:`, e.message);
-        g.todayRevenue = 0; g.prevDayRevenue = null;
+        g.todayRevenue = null; g.prevDayRevenue = null;
+        g.todayRevenueError = e.message;
       }).finally(() => {
         g.todayLoading = false; g.momLoading = false; renderAll();
       });
@@ -425,20 +427,17 @@
       // 3) 本月收入区间（拿 total + list，list 供预估用）
       const p3 = fetchGameRevenue(appId, monthStart, today).then(monthData => {
         g.monthRevenue = monthData.total;
-        monthRevList = monthData.list || [];
+        g.monthRevenueError = null;
       }).catch(e => {
         console.warn(`[${g.name}] 本月收入获取失败:`, e.message);
-        g.monthRevenue = 0;
+        g.monthRevenue = null;
+        g.monthRevenueError = e.message;
       }).finally(() => {
         g.monthLoading = false; renderAll();
       });
 
-      // 4) 本月 DAU 区间（拿今日 DAU + list，供预估用）
-      const p4 = fetchGameDAURange(appId, monthStart, today).then(map => {
-        monthDauMap = map;
-      }).catch(e => {
-        console.warn(`[${g.name}] 本月 DAU 获取失败:`, e.message);
-      });
+      // 4) 本月 DAU 请求已移除：首页只展示昨日 DAU，不再计算预估收益。
+      const p4 = Promise.resolve();
 
       // 5) 上月同期收入（本月环比基准）—— 历史数据不变，用日期范围作 key 缓存
       const p5CacheKey = `cache:${DEVELOPER_ID}:${appId}:lastMonthRev:${lastMonthRange.start}_${lastMonthRange.end}`;
@@ -469,28 +468,17 @@
           })
       ).then(total => {
         g.totalRevenue = total;
+        g.totalRevenueError = null;
       }).catch(e => {
         console.warn(`[${g.name}] 累计总收入获取失败:`, e.message);
-        g.totalRevenue = 0;
+        g.totalRevenue = null;
+        g.totalRevenueError = e.message;
       }).finally(() => {
         g.totalLoading = false; renderAll();
       });
 
       // 等全部完成
       await Promise.all([p1, p2, p3, p4, p5, p6]);
-
-      // 7) 算今日预估（依赖 3 + 4）
-      try {
-        const est = computeTodayEstimate(monthRevList, monthDauMap);
-        g.todayEstimate = est.estimate;
-        g.todayEstimateArpu = est.arpu;
-      } catch (e) {
-        console.warn(`[${g.name}] 今日预估计算失败:`, e.message);
-        g.todayEstimate = 0;
-      } finally {
-        g.estimateLoading = false;
-        renderAll();
-      }
     });
 
     await Promise.all(promises);
@@ -498,39 +486,38 @@
   }
 
   // ========== 渲染 ==========
+  // 只展示接口返回的真实结算金额；不使用 ARPU 估算替换昨日收入。
   function renderSummary(games) {
     const publishedGames = games.filter(g => g.published);
     const todayGot = publishedGames.filter(g => g.todayRevenue != null);
     const monthGot = publishedGames.filter(g => g.monthRevenue != null);
     const totalGot = publishedGames.filter(g => g.totalRevenue != null);
-    const estGot = publishedGames.filter(g => g.todayEstimate != null);
 
-    const todayTotal = todayGot.reduce((s, g) => s + (g.todayRevenue || 0), 0);
-    const monthTotal = monthGot.reduce((s, g) => s + (g.monthRevenue || 0), 0);
-    const grandTotal = totalGot.reduce((s, g) => s + (g.totalRevenue || 0), 0);
-    const estimateTotal = estGot.reduce((s, g) => s + (g.todayEstimate || 0), 0);
+    function renderAmount(id, values, duration) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (values.length === 0) {
+        el.textContent = '暂无';
+        return;
+      }
+      const total = values.reduce((sum, value) => sum + (value || 0), 0);
+      animateValue(el, total, duration, fmtMoney);
+    }
 
-    // 昨日预估：当实际昨日收入为 0 时，用 ARPU × 昨日 DAU 估算；汇总后仍显示为 0 则启用预估
-    const yesterdayEstimateTotal = todayGot.reduce((s, g) => {
-      if (g.todayRevenue > 0) return s + g.todayRevenue;
-      if (g.todayEstimateArpu > 0 && g.todayDAU > 0) return s + g.todayEstimateArpu * g.todayDAU;
-      return s;
-    }, 0);
-    const useYesterdayEstimate = todayTotal === 0 && yesterdayEstimateTotal > 0;
-
-    const publishedCount = publishedGames.length;
-
-    // 金额滚动动画（从当前显示值接力到新值）
-    animateValue(document.getElementById('summary-today'), useYesterdayEstimate ? yesterdayEstimateTotal : todayTotal, 600, fmtMoney);
-    animateValue(document.getElementById('summary-month'), monthTotal, 600, fmtMoney);
-    animateValue(document.getElementById('summary-total'), grandTotal, 800, fmtMoney);
-    animateValue(document.getElementById('summary-estimate'), estimateTotal, 700, fmtMoney);
-
-    // 昨日收入/预估标签切换
-    document.getElementById('summary-today-label').textContent = useYesterdayEstimate ? '昨日预估' : '昨日收入';
-
-    // 月度目标进度
-    renderMonthGoal(monthTotal, monthGot.length, publishedCount);
+    const monthTotal = monthGot.reduce((sum, game) => sum + (game.monthRevenue || 0), 0);
+    renderAmount('summary-today', todayGot.map(g => g.todayRevenue), 600);
+    renderAmount('summary-month', monthGot.map(g => g.monthRevenue), 600);
+    renderAmount('summary-total', totalGot.map(g => g.totalRevenue), 800);
+    const label = document.getElementById('summary-today-label');
+    if (label) label.textContent = '昨日已结算';
+    const meta = document.getElementById('summary-total-meta');
+    if (meta) {
+      const pending = publishedGames.length - totalGot.length;
+      meta.textContent = pending > 0
+        ? `${totalGot.length}/${publishedGames.length} 个项目已同步真实结算数据，${pending} 个项目未同步`
+        : `${totalGot.length}/${publishedGames.length} 个项目已同步真实结算数据`;
+    }
+    renderMonthGoal(monthTotal, monthGot.length, publishedGames.length);
   }
 
   // 月度目标进度条
@@ -588,9 +575,11 @@
     });
 
     list.innerHTML = sorted.map((g, i) => {
-      const iconHTML = g.icon
-        ? `<img src="${g.icon}" alt="${g.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="icon-fallback" style="display:none;">${g.name.charAt(0)}</span>`
-        : `<span>${g.name.charAt(0)}</span>`;
+      const safeName = escapeHTML(g.name);
+      const safeIcon = g.icon ? escapeHTML(g.icon) : '';
+      const iconHTML = safeIcon
+        ? `<img src="${safeIcon}" alt="${safeName}" class="app-icon-image"><span class="icon-fallback">${escapeHTML(g.name.charAt(0))}</span>`
+        : `<span class="icon-fallback">${escapeHTML(g.name.charAt(0))}</span>`;
 
       const statusBadge = g.published ? '' : '<span class="game-status unpublished">未发布</span>';
 
@@ -608,16 +597,12 @@
         todayHTML = `<div class="game-metric-value muted">加载中</div>
                      <div class="game-metric-label">昨日收入</div>`;
       } else if (g.todayRevenue == null) {
-        todayHTML = `<div class="game-metric-value muted">—</div>
-                     <div class="game-metric-label">昨日收入</div>`;
+        todayHTML = `<div class="game-metric-value muted">暂无</div>
+                     <div class="game-metric-label">昨日结算未同步</div>`;
       } else {
-        const useEst = g.todayRevenue === 0 && g.todayEstimateArpu > 0 && g.todayDAU > 0;
-        const revValue = useEst ? (g.todayEstimateArpu * g.todayDAU) : g.todayRevenue;
-        const momRev = momTagHTML(revValue, g.prevDayRevenue);
-        const label = useEst ? '昨日预估' : '昨日收入';
-        const estCls = useEst ? ' is-estimate' : '';
-        todayHTML = `<div class="game-metric-value${estCls}">¥${fmt(revValue)}</div>
-                     <div class="game-metric-label">${label} ${momRev}</div>`;
+        const momRev = momTagHTML(g.todayRevenue, g.prevDayRevenue);
+        todayHTML = `<div class="game-metric-value">¥${fmt(g.todayRevenue)}</div>
+                     <div class="game-metric-label">昨日已结算 ${momRev}</div>`;
       }
 
       // 日活 + 转化率块
@@ -635,20 +620,18 @@
                    <div class="game-metric-label">昨日日活</div>
                    <div class="game-metric-sub muted">转化率 —</div>`;
       } else {
-        const useEst = g.todayRevenue === 0 && g.todayEstimateArpu > 0 && g.todayDAU > 0;
-        const arpu = g.todayDAU > 0 ? (useEst ? g.todayEstimateArpu : g.todayRevenue / g.todayDAU) : 0;
+        const arpu = g.todayDAU > 0 && g.todayRevenue != null ? (g.todayRevenue / g.todayDAU) : null;
         const momDau = momTagHTML(g.todayDAU, g.prevDayDAU);
-        const arpuLabel = useEst ? '预估转化' : '转化率';
         dauHTML = `<div class="game-metric-value">${(g.todayDAU||0).toLocaleString('zh-CN')}</div>
                    <div class="game-metric-label">昨日日活 ${momDau}</div>
-                   <div class="game-metric-sub">${arpuLabel} ${(arpu * 100).toFixed(1)}%</div>`;
+                   <div class="game-metric-sub">${arpu == null ? '转化率 —' : `转化率 ${(arpu * 100).toFixed(1)}%`}</div>`;
       }
 
       // 本月数据块
       let monthHTML;
       if (!g.published) {
-        monthHTML = `<div class="game-metric-value muted">—</div>
-                     <div class="game-metric-label">本月</div>`;
+        monthHTML = `<div class="game-metric-value muted">暂无</div>
+                     <div class="game-metric-label">本月结算未同步</div>`;
       } else if (g.monthLoading) {
         monthHTML = `<div class="game-metric-value muted">加载中</div>
                      <div class="game-metric-label">本月</div>`;
@@ -668,25 +651,16 @@
                      ${lastMonthLine}`;
       }
 
-      // 名称下方：今日预估 pill（橙）+ 累计 pill（青）并排
+      // 名称下方展示累计已结算金额
       let subHTML;
       if (!g.published) {
         subHTML = `<span class="game-sub-hint">未发布 · 点击查看详情</span>`;
       } else {
-        const pills = [];
-        // 今日预估 pill（醒目橙色）
-        if (g.estimateLoading) {
-          pills.push(`<span class="game-est-pill is-loading">预估中…</span>`);
-        } else if (g.todayEstimate != null && g.todayEstimate > 0) {
-          pills.push(`<span class="game-est-pill">今日预估 ¥${fmt(g.todayEstimate)}</span>`);
-        }
-        // 累计 pill
-        if (g.totalLoading) {
-          pills.push(`<span class="game-sub-hint">累计统计中…</span>`);
-        } else if (g.totalRevenue != null && g.totalRevenue > 0) {
-          pills.push(`<span class="game-total-pill">累计 ¥${fmt(g.totalRevenue)}</span>`);
-        }
-        subHTML = pills.length > 0 ? pills.join('') : `<span class="game-sub-hint">点击查看详情</span>`;
+        subHTML = g.totalLoading
+          ? `<span class="game-sub-hint">累计结算同步中…</span>`
+          : g.totalRevenue == null
+            ? `<span class="game-sub-hint">累计结算未同步</span>`
+            : `<span class="game-total-pill">累计已结算 ¥${fmt(g.totalRevenue)}</span>`;
       }
 
       return `
@@ -694,7 +668,7 @@
           <div class="game-card-top">
             <div class="game-icon">${iconHTML}</div>
             <div class="game-info">
-              <div class="game-name">${g.name} ${statusBadge}</div>
+              <div class="game-name">${safeName} ${statusBadge}</div>
               <div class="game-sub">${subHTML}</div>
             </div>
             <svg class="game-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -836,6 +810,7 @@
   // ========== 事件 ==========
 
   // ========== API 探测 ==========
+  // 调试面板已从用户界面移除，保留数据接口兼容代码不再绑定 UI。
   let capturedApis = [];
   let expandedApi = null;
 
@@ -934,62 +909,18 @@
   }
 
   if (isElectron) {
-    document.getElementById('api-open-btn').addEventListener('click', async () => {
-      await window.electronAPI.openExplorer();
-    });
-    document.getElementById('api-clear-btn').addEventListener('click', async () => {
-      await window.electronAPI.clearCapturedApis();
-      capturedApis = [];
-      expandedApi = null;
-      renderApiList();
-    });
-    // 批量重放关键 API 并存到文件
-    document.getElementById('api-replay-btn').addEventListener('click', async () => {
-      const btn = document.getElementById('api-replay-btn');
-      const oldText = btn.textContent;
-      btn.textContent = '重放中...';
-      btn.disabled = true;
-      try {
-        const res = await window.electronAPI.replayKeyApis();
-        btn.textContent = `完成: ${res.count} 条已保存`;
-        setTimeout(() => {
-          btn.textContent = oldText;
-          btn.disabled = false;
-        }, 3000);
-      } catch (e) {
-        btn.textContent = '失败: ' + e.message;
-        setTimeout(() => {
-          btn.textContent = oldText;
-          btn.disabled = false;
-        }, 3000);
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => {
+      playSfx('refresh');
+      const icon = refreshBtn.querySelector('svg');
+      if (icon) {
+        icon.style.transition = 'transform 0.6s steps(6)';
+        icon.style.transform = 'rotate(360deg)';
+        setTimeout(() => { icon.style.transition = 'none'; icon.style.transform = 'rotate(0deg)'; }, 600);
       }
-    });
-    window.electronAPI.onApisUpdated(() => {
-      refreshApis();
+      init();
     });
   }
-
-  document.getElementById('refresh-btn').addEventListener('click', () => {
-    const btn = document.getElementById('refresh-btn');
-    const icon = btn.querySelector('svg');
-    if (icon) {
-      icon.style.transition = 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
-      icon.style.transform = 'rotate(360deg)';
-      setTimeout(() => {
-        icon.style.transition = 'none';
-        icon.style.transform = 'rotate(0deg)';
-      }, 600);
-    }
-
-    // 重置错落淡入标志，让卡片重新动画（在 fetchAppList 成功后触发）
-    if (isElectron) {
-      // 重新拉取
-      init();
-    } else {
-      firstRenderDone = false;
-      renderAll();
-    }
-  });
 
   const toggleUnpublished = document.getElementById('toggle-unpublished');
   if (toggleUnpublished) {
@@ -1004,11 +935,11 @@
   const settingsModal = document.getElementById('settings-modal');
   const settingsOverlay = document.getElementById('settings-overlay');
   const settingsClose = document.getElementById('settings-close');
-  const settingDark = document.getElementById('setting-dark');
-  const settingExplorer = document.getElementById('setting-explorer');
-  const settingAutorefresh = document.getElementById('setting-autorefresh');
-  const settingMonthGoal = document.getElementById('setting-month-goal');
-  const settingMonthGoalSave = document.getElementById('setting-month-goal-save');
+  const settingDark = null;
+  const settingExplorer = null;
+  const settingAutorefresh = null;
+  const settingMonthGoal = null;
+  const settingMonthGoalSave = null;
 
   // 自动刷新定时器（5 分钟）
   const AUTOREFRESH_INTERVAL = 5 * 60 * 1000;
@@ -1067,6 +998,7 @@
       const action = btn.dataset.action;
 
       if (action === 'switch') {
+        playSfx('switch');
         await window.electronAPI.switchAccount(id);
         // 切换后主进程会重建窗口，当前页面自动重载
       } else if (action === 'remove') {
@@ -1103,15 +1035,6 @@
 
   function openSettings() {
     if (!settingsModal) return;
-    settingDark.checked = localStorage.getItem(SETTINGS_KEYS.theme) === 'dark';
-    settingExplorer.checked = localStorage.getItem(SETTINGS_KEYS.explorer) === '1';
-    if (settingAutorefresh) {
-      settingAutorefresh.checked = localStorage.getItem(SETTINGS_KEYS.autorefresh) === '1';
-    }
-    if (settingMonthGoal) {
-      const goal = localStorage.getItem(SETTINGS_KEYS.monthGoal);
-      settingMonthGoal.value = goal ? parseFloat(goal) : '';
-    }
     settingsModal.hidden = false;
     renderAccountList();
   }
@@ -1119,58 +1042,19 @@
     if (!settingsModal) return;
     settingsModal.hidden = true;
   }
-  if (settingsBtn) {
+  if (settingsBtn || document.getElementById('account-manage-btn')) {
     const accountManageBtn = document.getElementById('account-manage-btn');
     if (accountManageBtn) accountManageBtn.addEventListener('click', openSettings);
-    settingsBtn.addEventListener('click', openSettings);
+    if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
     settingsOverlay.addEventListener('click', closeSettings);
     settingsClose.addEventListener('click', closeSettings);
     bindAccountEvents();
-    settingDark.addEventListener('change', () => {
-      localStorage.setItem(SETTINGS_KEYS.theme, settingDark.checked ? 'dark' : 'light');
-      applyTheme();
-    });
-    settingExplorer.addEventListener('change', () => {
-      localStorage.setItem(SETTINGS_KEYS.explorer, settingExplorer.checked ? '1' : '0');
-      applyExplorer();
-    });
-    if (settingAutorefresh) {
-      settingAutorefresh.addEventListener('change', () => {
-        localStorage.setItem(SETTINGS_KEYS.autorefresh, settingAutorefresh.checked ? '1' : '0');
-        applyAutoRefresh();
-      });
-    }
-    if (settingMonthGoal && settingMonthGoalSave) {
-      const saveGoal = () => {
-        const val = parseFloat(settingMonthGoal.value);
-        if (val > 0) {
-          localStorage.setItem(SETTINGS_KEYS.monthGoal, String(val));
-        } else {
-          localStorage.removeItem(SETTINGS_KEYS.monthGoal);
-        }
-        // 按钮反馈
-        const oldText = settingMonthGoalSave.textContent;
-        settingMonthGoalSave.textContent = '已保存 ✓';
-        settingMonthGoalSave.classList.add('is-saved');
-        setTimeout(() => {
-          settingMonthGoalSave.textContent = oldText;
-          settingMonthGoalSave.classList.remove('is-saved');
-        }, 1500);
-        // 立即重渲染进度条
-        renderAll();
-      };
-      settingMonthGoalSave.addEventListener('click', saveGoal);
-      settingMonthGoal.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') saveGoal();
-      });
-    }
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !settingsModal.hidden) closeSettings();
     });
   }
 
-  // 启动自动刷新（如果之前开过）
-  applyAutoRefresh();
+  // 不再启用自动同步；所有刷新由用户明确点击同步按钮触发。
 
   // 轻提示
   function showToast(msg) {
@@ -1223,6 +1107,11 @@
       });
     }
   }
+
+  document.addEventListener('click', (event) => {
+    const target = event.target.closest('button, input[type="checkbox"]');
+    if (target && target.id !== 'refresh-btn' && !target.matches('[data-action="switch"]')) playSfx('click');
+  });
 
   // 启动
   init();
