@@ -252,19 +252,34 @@
   }
 
   // ========== 数据获取 ==========
+  // 从各种可能的 icon 字段里挑出一个可直接展示的 http(s) URL
   function normalizeAssetUrl(value) {
     if (!value) return null;
-    const candidate = typeof value === 'string'
-      ? value
-      : value.url || value.medium_url || value.small_url || value.large_url || value.src || null;
-    if (!candidate || typeof candidate !== 'string') return null;
-    try {
-      const url = new URL(candidate, window.location.href);
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-      return url.href;
-    } catch (e) {
-      return null;
+    // 递归找第一个字符串候选：兼容数组 / 嵌套对象
+    const candidates = [];
+    const collect = (v) => {
+      if (v == null) return;
+      if (typeof v === 'string') { candidates.push(v); return; }
+      if (Array.isArray(v)) { v.forEach(collect); return; }
+      if (typeof v === 'object') {
+        // 按常见优先级顺序枚举
+        const keys = ['url', 'original_url', 'originalUrl', 'large_url', 'largeUrl',
+                      'medium_url', 'mediumUrl', 'small_url', 'smallUrl',
+                      'thumb_url', 'thumbUrl', 'src', 'path', 'download_url'];
+        keys.forEach(k => { if (v[k] != null) collect(v[k]); });
+      }
+    };
+    collect(value);
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string' || !candidate) continue;
+      try {
+        // protocol-relative ("//cdn.xxx.com/a.png") 从 appassets 基址解析，强制用 https
+        const url = new URL(candidate, 'https://developer.taptap.cn/');
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+        return url.href;
+      } catch (e) { /* ignore, try next */ }
     }
+    return null;
   }
 
   function escapeHTML(value) {
@@ -277,7 +292,9 @@
   }
 
   function getAppIcon(app) {
-    const icon = app.icon || app.icon_url || app.iconUrl || app.logo || app.cover;
+    // TapTap 开发者后台 /api/app/v2/list 常用 icon 字段名兼容（原版 EXE 读取的也是这些之一）
+    const icon = app.icon || app.icon_url || app.iconUrl || app.logo || app.logo_url
+              || app.cover || app.cover_url || app.image || app.avatar || app.thumb || app.thumbnail;
     return normalizeAssetUrl(icon);
   }
 
@@ -290,7 +307,8 @@
     GAMES = json.data.list.map(app => ({
       appId: String(app.id),
       name: app.title,
-      icon: getAppIcon(app),
+      // 与原版 EXE 完全一致：优先 medium_url，其次 url；通过 normalizeAssetUrl 统一成绝对 https URL
+      icon: normalizeAssetUrl(app.icon && app.icon.medium_url ? app.icon.medium_url : (app.icon && app.icon.url)) || getAppIcon(app),
       published: app.review_status && app.review_status.value === 4,
       todayRevenue: null,
       monthRevenue: null,
@@ -569,10 +587,15 @@
 
     list.innerHTML = sorted.map((g, i) => {
       const safeName = escapeHTML(g.name);
-      const safeIcon = g.icon ? escapeHTML(g.icon) : '';
-      const iconHTML = safeIcon
-        ? `<img src="${safeIcon}" alt="${safeName}" class="app-icon-image"><span class="icon-fallback">${escapeHTML(g.name.charAt(0))}</span>`
-        : `<span class="icon-fallback">${escapeHTML(g.name.charAt(0))}</span>`;
+      const firstChar = escapeHTML((g.name || '?').charAt(0));
+      let iconHTML;
+      if (g.icon) {
+        const safeIcon = escapeHTML(g.icon);
+        // 与原版 EXE 完全一致：加载失败时隐藏 img、显示兜底字母；默认字母不显示
+        iconHTML = `<img src="${safeIcon}" alt="${safeName}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="icon-fallback" style="display:none;">${firstChar}</span>`;
+      } else {
+        iconHTML = `<span class="icon-fallback">${firstChar}</span>`;
+      }
 
       const statusBadge = g.published ? '' : '<span class="game-status unpublished">未发布</span>';
 

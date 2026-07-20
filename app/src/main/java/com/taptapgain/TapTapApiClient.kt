@@ -31,7 +31,8 @@ import java.util.concurrent.TimeUnit
  */
 class TapTapApiClient(private val accountManager: AccountManager) {
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    // Exposed for use by MainActivity's image proxy (same package).
+    internal val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .followRedirects(true)
@@ -64,7 +65,7 @@ class TapTapApiClient(private val accountManager: AccountManager) {
                 )
                 .header("Accept", "application/json, text/plain, */*")
                 .build()
-            client.newCall(request).execute().use { response ->
+            httpClient.newCall(request).execute().use { response ->
                 FetchResult(
                     response.isSuccessful,
                     response.code,
@@ -88,7 +89,7 @@ class TapTapApiClient(private val accountManager: AccountManager) {
                 )
                 .header("Accept", "application/json, text/plain, */*")
                 .build()
-            client.newCall(request).execute().use { response ->
+            httpClient.newCall(request).execute().use { response ->
                 FetchResult(
                     response.isSuccessful,
                     response.code,
