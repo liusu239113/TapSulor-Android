@@ -10,14 +10,14 @@ class ExplorerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        webView = WebView(this).apply {
+        webView = WebView(this).apply webView@{
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.apply {
                 javaScriptEnabled = true; domStorageEnabled = true; useWideViewPort = true; loadWithOverviewMode = true
                 setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
                 userAgentString = settings.userAgentString.replace("; wv", "")
                 CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this@apply, true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
             }
             webViewClient = WebViewClient(); webChromeClient = WebChromeClient()
         }
