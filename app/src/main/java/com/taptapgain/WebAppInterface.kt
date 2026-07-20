@@ -58,8 +58,14 @@ class WebAppInterface(
     @JavascriptInterface fun replayApi(url: String) {
         scope.launch {
             val result = apiClient.fetch(url)
-            webView.post { webView.evaluateJavascript("window.__pendingReplayResolve('${result.body.replace("'", "\\'").replace("\n", "\\n")}')", null) }
+            val body = gson.toJson(mapOf("ok" to result.ok, "status" to result.status, "body" to result.body, "error" to result.error))
+            webView.post { webView.evaluateJavascript("window.__pendingReplayResolve('${body.replace("\\", "\\\\").replace("'", "\\\\'").replace("\n", "\\n")}')", null) }
         }
+    }
+
+    @JavascriptInterface fun replayKeyApis() {
+        val json = gson.toJson(mapOf("count" to 0, "saved" to false))
+        webView.post { webView.evaluateJavascript("window.__pendingReplayKeyResolve('${json.replace("'", "\\\\'")}')", null) }
     }
 
     fun notifyLoginSuccess() { webView.post { webView.evaluateJavascript("if(window.__onLoginSuccess) window.__onLoginSuccess()", null) } }
