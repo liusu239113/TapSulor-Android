@@ -361,6 +361,52 @@ body {
   color: var(--text-tertiary);
 }
 
+/* 项目搜索框 */
+.game-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 4px 0 12px;
+}
+.game-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.game-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 34px 0 34px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-shadow: var(--shadow-card);
+  transition: border-color .15s;
+  -webkit-appearance: none;
+}
+.game-search-input::placeholder { color: var(--text-tertiary); }
+.game-search-input:focus { border-color: var(--accent, #25B6E9); }
+.game-search-clear {
+  position: absolute;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+
 .game-list {
   display: flex;
   flex-direction: column;

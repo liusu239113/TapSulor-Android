@@ -151,6 +151,8 @@ class BackendWebViewActivity : AppCompatActivity() {
                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
+                // 允许无用户手势自动播放音频(与首页 WebView 行为一致)
+                mediaPlaybackRequiresUserGesture = false
             }
 
             webViewClient = object : WebViewClient() {
@@ -216,6 +218,9 @@ class BackendWebViewActivity : AppCompatActivity() {
         root.addView(webContainer)
         setContentView(root)
 
+        // 顶部栏样式:返回/刷新按钮=强调色,标题=主文本色,关闭=危险红;全部跟随字体偏好
+        applyNativeTheme()
+
         // Load the game backend page after restoring cookies
         val accountManager = AccountManager(this)
         val devId = accountManager.getDeveloperId()
@@ -250,6 +255,20 @@ class BackendWebViewActivity : AppCompatActivity() {
         } else {
             super.onBackPressed()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从设置页/其他页面返回时重新应用主题字体/强调色(用户可能刚切换过)
+        applyNativeTheme()
+    }
+
+    /** 把 web 端同步过来的字体偏好/强调色应用到顶部栏所有 TextView */
+    private fun applyNativeTheme() {
+        // 返回/刷新按钮使用强调色 + 自定义字体
+        FontHelper.applyTopBarStyle(this, backBtn, refreshBtn)
+        // 标题/关闭按钮保持原配色(text_primary / color_error),仅应用字体
+        FontHelper.applyFont(this, titleText, closeBtn)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

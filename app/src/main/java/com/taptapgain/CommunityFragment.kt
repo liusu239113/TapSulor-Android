@@ -67,7 +67,27 @@ class CommunityFragment : Fragment() {
         root.addView(titleText)
         root.addView(descText)
 
+        // 社区占位页样式:图标/标题=主文本色,描述=强调色,全部跟随字体偏好
+        FontHelper.applyFont(ctx, iconText, titleText)
+        FontHelper.applyTopBarStyle(ctx, descText)
+
+        // 缓存引用用于 onResume 时重新应用
+        themedViews = ThemedViews(iconText, titleText, descText)
+
         return root
+    }
+
+    private data class ThemedViews(val icon: TextView, val title: TextView, val desc: TextView)
+    private var themedViews: ThemedViews? = null
+
+    override fun onResume() {
+        super.onResume()
+        // 从设置页返回时重新应用(用户可能刚切换字体/强调色)
+        themedViews?.let { v ->
+            val ctx = context ?: return
+            FontHelper.applyFont(ctx, v.icon, v.title)
+            FontHelper.applyTopBarStyle(ctx, v.desc)
+        }
     }
 
     private fun dp(value: Int): Int {

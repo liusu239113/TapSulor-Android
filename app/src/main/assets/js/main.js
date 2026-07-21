@@ -950,6 +950,40 @@
 
     // 首次渲染完成，后续数据更新不再触发错落淡入
     firstRenderDone = true;
+    applyGameFilter();
+  }
+
+  function applyGameFilter() {
+    const input = document.getElementById('game-search');
+    const clear = document.getElementById('game-search-clear');
+    const countEl = document.getElementById('game-count');
+    if (!input) return;
+    const q = (input.value || '').trim().toLowerCase();
+    if (clear) clear.hidden = q.length === 0;
+    const cards = document.querySelectorAll('#game-list .game-card');
+    let shown = 0;
+    cards.forEach(card => {
+      const nameEl = card.querySelector('.game-name');
+      const name = nameEl ? nameEl.textContent.toLowerCase() : '';
+      // 名称末尾可能带" 未发布"角标文本,过滤时忽略
+      const pureName = name.replace(/\s*未发布\s*$/, '');
+      const match = q.length === 0 || pureName.includes(q);
+      card.style.display = match ? '' : 'none';
+      if (match) shown++;
+    });
+    if (countEl) countEl.textContent = (q.length === 0 ? cards.length + ' 个' : shown + ' / ' + cards.length + ' 个');
+  }
+
+  function bindSearchFilter() {
+    const input = document.getElementById('game-search');
+    const clear = document.getElementById('game-search-clear');
+    if (!input) return;
+    input.addEventListener('input', applyGameFilter);
+    if (clear) clear.addEventListener('click', () => {
+      input.value = '';
+      input.focus();
+      applyGameFilter();
+    });
   }
 
   function openDetail(game) {
@@ -966,6 +1000,7 @@
   // ========== 初始化 ==========
   async function init() {
     renderAll();
+    bindSearchFilter();
 
     if (!isElectron) {
       const boot = document.getElementById('auth-boot');

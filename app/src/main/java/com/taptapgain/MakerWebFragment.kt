@@ -142,6 +142,8 @@ class MakerWebFragment : Fragment() {
                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
+                // 允许无用户手势自动播放音频(与首页 WebView 行为一致)
+                mediaPlaybackRequiresUserGesture = false
             }
 
             webViewClient = object : WebViewClient() {
@@ -206,6 +208,9 @@ class MakerWebFragment : Fragment() {
         root.addView(topBar)
         root.addView(webContainer)
 
+        // 顶部栏样式:返回/刷新按钮=强调色,标题=主文本色,关闭=危险红;全部跟随字体偏好
+        applyNativeTheme(ctx, backBtn, titleText, refreshBtn, closeBtn)
+
         // Restore cookies and load maker page
         val accountManager = AccountManager(ctx)
         accountManager.restoreCurrentCookies {
@@ -231,6 +236,33 @@ class MakerWebFragment : Fragment() {
     fun canGoBack(): Boolean = ::webView.isInitialized && webView.canGoBack()
     fun goBack() { if (::webView.isInitialized) webView.goBack() }
     fun destroyWebView() { if (::webView.isInitialized) webView.destroy() }
+
+    private data class ThemedViews(
+        val backBtn: TextView, val titleText: TextView,
+        val refreshBtn: TextView, val closeBtn: TextView
+    )
+    private var themedViews: ThemedViews? = null
+
+    private fun applyNativeTheme(
+        ctx: android.content.Context,
+        backBtn: TextView, titleText: TextView,
+        refreshBtn: TextView, closeBtn: TextView
+    ) {
+        // 返回/刷新按钮=强调色 + 自定义字体;标题/关闭按钮保持原配色,仅应用字体
+        FontHelper.applyTopBarStyle(ctx, backBtn, refreshBtn)
+        FontHelper.applyFont(ctx, titleText, closeBtn)
+        themedViews = ThemedViews(backBtn, titleText, refreshBtn, closeBtn)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从设置页返回时重新应用(用户可能刚切换字体/强调色)
+        themedViews?.let { v ->
+            val ctx = context ?: return
+            FontHelper.applyTopBarStyle(ctx, v.backBtn, v.refreshBtn)
+            FontHelper.applyFont(ctx, v.titleText, v.closeBtn)
+        }
+    }
 
     private fun dp(value: Int): Int {
         val density = resources.displayMetrics.density

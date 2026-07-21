@@ -99,6 +99,14 @@
         <span class="game-count" id="game-count">0</span>
       </div>
     </div>
+    <!-- 项目搜索框：输入关键词实时过滤 -->
+    <div class="game-search-wrap">
+      <svg class="game-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+      </svg>
+      <input type="search" id="game-search" class="game-search-input" placeholder="搜索项目名称..." autocomplete="off">
+      <button type="button" class="game-search-clear" id="game-search-clear" hidden>×</button>
+    </div>
     <div class="game-grid" id="game-list"><div class="loading-tip">数据加载中...</div></div>
 
     <footer class="app-footer"><span id="app-version-footer">TapSulor / v1.0.1</span></footer>

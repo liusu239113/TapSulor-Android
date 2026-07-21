@@ -1,6 +1,7 @@
 package com.taptapgain
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +10,7 @@ import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -74,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         tabContainer = findViewById(R.id.tab_container)
         bottomNav = findViewById(R.id.bottom_nav)
         bottomDivider = findViewById(R.id.bottom_divider)
+        applyBottomNavAccent()
 
         // 1) 创建主页 WebView（原有逻辑），直接放进 tab_container
         webView = WebView(this).apply outer@{
@@ -93,6 +96,8 @@ class MainActivity : AppCompatActivity() {
                 cacheMode = WebSettings.LOAD_DEFAULT
                 userAgentString = settings.userAgentString.replace("; wv", "")
                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                // 允许无用户手势自动播放音频：webapp 开屏/点击音效依赖此开关,否则被 Chromium 拦截不发声
+                mediaPlaybackRequiresUserGesture = false
             }
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this@outer, true)
@@ -240,6 +245,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 从设置页返回时,用户可能切换了主题色/字体,立即刷新底栏选中色
+        applyBottomNavAccent()
         mainHandler.removeCallbacks(backgroundRefreshRunnable)
         if (hasResumedOnce) {
             try {
@@ -271,6 +278,21 @@ class MainActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) enableImmersiveMode()
+    }
+
+    /** 底部导航选中色跟随用户主题色(accent),未选中色跟随日夜间模式。 */
+    private fun applyBottomNavAccent() {
+        val accent = FontHelper.currentAccentColor(this)
+        val unselected = ContextCompat.getColor(this, R.color.nav_unselected)
+        val csl = ColorStateList(
+            arrayOf(
+                intArrayOf(android.R.attr.state_checked),
+                intArrayOf()
+            ),
+            intArrayOf(accent, unselected)
+        )
+        bottomNav.itemIconTintList = csl
+        bottomNav.itemTextColor = csl
     }
 
     private fun isImageRequest(url: String, request: WebResourceRequest): Boolean {

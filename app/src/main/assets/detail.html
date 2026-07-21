@@ -7,13 +7,15 @@
   <title>TapSulor 收益详情</title>
   <link rel="icon" href="app-icon.png">
   <script>
-    // 启动前立即恢复主题，避免错色闪烁（与主界面读取同一 localStorage 键）
+    // 启动前立即恢复主题/字体,避免错色/字体闪烁(与主界面读取同一 localStorage 键)
     (function(){
       try{
         var mode = localStorage.getItem('taptap_theme_mode') || 'light';
         var a = localStorage.getItem('taptap_theme_accent') || 'cyan';
+        var font = localStorage.getItem('taptap_font_family') || 'default';
         document.documentElement.setAttribute('data-theme', mode);
         document.documentElement.setAttribute('data-accent', a);
+        if (font && font !== 'default') document.documentElement.setAttribute('data-font', font);
         var meta = document.querySelector('meta[name="theme-color"]');
         if(meta){
           var map = {cyan:'#25B6E9',pink:'#FF7FB3',purple:'#8B7CF6',mint:'#36C9A0'};
