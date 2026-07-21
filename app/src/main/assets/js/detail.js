@@ -1199,6 +1199,13 @@
     window.location.href = 'index.html';
   });
 
+  // 后台管理入口
+  document.getElementById('backend-btn').addEventListener('click', () => {
+    if (currentGame && window.electronAPI && window.electronAPI.openGameBackend) {
+      window.electronAPI.openGameBackend(currentGame.appId, currentGame.name || '');
+    }
+  });
+
   document.getElementById('prev-month').addEventListener('click', () => shiftMonth(-1));
   document.getElementById('next-month').addEventListener('click', () => shiftMonth(1));
 

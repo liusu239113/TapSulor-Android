@@ -126,6 +126,10 @@ class WebAppInterface(
         activity.startActivity(Intent(activity, ExplorerActivity::class.java))
     }
 
+    @JavascriptInterface fun openGameBackend(appId: String, appName: String) {
+        BackendWebViewActivity.start(activity, appId, appName)
+    }
+
     @JavascriptInterface fun getCapturedApis(): String = gson.toJson(capturedApis)
     @JavascriptInterface fun clearCapturedApis() { capturedApis.clear() }
 

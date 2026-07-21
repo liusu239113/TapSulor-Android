@@ -61,6 +61,7 @@
     },
     removeAccount: function (id) { return { ok: AndroidBridge.removeAccount(id) }; },
     openExplorer: function () { AndroidBridge.openExplorer(); },
+    openGameBackend: function (appId, appName) { AndroidBridge.openGameBackend(appId || '', appName || ''); },
     getCapturedApis: function () { return JSON.parse(AndroidBridge.getCapturedApis()); },
     clearCapturedApis: function () { AndroidBridge.clearCapturedApis(); },
     replayApi: function (url) {
