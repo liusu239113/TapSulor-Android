@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -16,6 +15,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayInputStream
@@ -157,14 +158,13 @@ class MakerWebFragment : Fragment() {
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
                 // SharedArrayBuffer 是 SCE / UrhoX 游戏运行时(WASM 多线程)的硬性依赖。
-                // Android 14(API 34)及以上:直接通过 framework API 开启。
-                // 更低版本:通过 shouldInterceptRequest 给所有 maker.taptap.cn 响应
-                // 注入 Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy 头,
-                // 让页面处于 cross-origin isolated 状态以启用 SAB。
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // 通过 AndroidX WebSettingsCompat 在支持的设备上直接开启(覆盖 API 34+ 原生
+                // 与部分低版本 WebView 实现);对不支持该 feature 的设备,再由下面
+                // shouldInterceptRequest 注入 COOP/COEP 头让页面 cross-origin isolated,
+                // 双管齐下确保 SAB 可用。
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.ENABLE_SHARED_ARRAY_BUFFER)) {
                     try {
-                        @SuppressLint("NewApi")
-                        setEnableSharedArrayBuffer(true)
+                        WebSettingsCompat.setEnableSharedArrayBuffer(this, true)
                     } catch (_: Exception) {}
                 }
             }
