@@ -1,11 +1,17 @@
 package com.taptapgain
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.browser.customtabs.CustomTabsIntent
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.*
@@ -54,7 +60,7 @@ class UpdateChecker(private val activity: Activity) {
     // 与 Activity 生命周期绑定；Activity 销毁时取消所有在途请求，避免泄漏
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    private var currentDialog: AlertDialog? = null
+    private var currentDialog: Dialog? = null
     private var checking = false
 
     /**
@@ -117,25 +123,55 @@ class UpdateChecker(private val activity: Activity) {
         val version = info.latestVersion ?: info.versionCode.toString()
         val notes = info.updateNotes?.takeIf { it.isNotBlank() } ?: "修复已知问题，优化体验。"
         val title = if (info.forceUpdate) "发现重要更新 v$version" else "发现新版本 v$version"
-        val message = buildString {
-            append(notes)
-            if (!info.publishedAt.isNullOrBlank()) {
-                append("\n\n发布时间：").append(info.publishedAt)
+
+        // 使用自定义暗色 Dialog，与 WebView 内的暗色主题保持视觉一致
+        val dialog = Dialog(activity, R.style.Theme_TapTapGain_UpdateDialog)
+        dialog.setContentView(R.layout.dialog_update)
+        dialog.setCancelable(!info.forceUpdate)
+        dialog.setCanceledOnTouchOutside(!info.forceUpdate)
+
+        // 设置窗口宽度（屏幕宽度的 86%，两侧留白）、居中
+        val window = dialog.window
+        window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val lp = window?.attributes
+        lp?.width = (activity.resources.displayMetrics.widthPixels * 0.86f).toInt()
+        lp?.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        lp?.gravity = Gravity.CENTER
+        window?.attributes = lp
+
+        // 填充内容
+        dialog.findViewById<TextView>(R.id.tvTitle).text = title
+        dialog.findViewById<TextView>(R.id.tvVersionBadge).text = "v$version"
+        dialog.findViewById<TextView>(R.id.tvNotes).text = notes
+
+        val tvPublishedAt = dialog.findViewById<TextView>(R.id.tvPublishedAt)
+        if (!info.publishedAt.isNullOrBlank()) {
+            tvPublishedAt.text = "发布时间：${info.publishedAt}"
+            tvPublishedAt.visibility = View.VISIBLE
+        } else {
+            tvPublishedAt.visibility = View.GONE
+        }
+
+        // 按钮事件
+        val btnUpdate = dialog.findViewById<TextView>(R.id.btnUpdate)
+        val btnLater = dialog.findViewById<TextView>(R.id.btnLater)
+
+        btnUpdate.setOnClickListener {
+            dialog.dismiss()
+            currentDialog = null
+            openDownloadPage(info)
+        }
+
+        if (info.forceUpdate) {
+            // 强制更新：隐藏"稍后"按钮，主按钮（已设 weight=1）会自动占满整行
+            btnLater.visibility = View.GONE
+        } else {
+            btnLater.setOnClickListener {
+                dialog.dismiss()
+                currentDialog = null
             }
         }
 
-        val builder = AlertDialog.Builder(activity)
-            .setTitle(title)
-            .setMessage(message)
-            .setCancelable(!info.forceUpdate)
-            .setPositiveButton("立即更新") { _, _ -> openDownloadPage(info) }
-
-        if (!info.forceUpdate) {
-            builder.setNegativeButton("稍后", null)
-        }
-
-        val dialog = builder.create()
-        dialog.setCanceledOnTouchOutside(!info.forceUpdate)
         dialog.show()
         currentDialog = dialog
     }

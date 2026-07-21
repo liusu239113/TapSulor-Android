@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TapSulor 暗色更新弹窗布局：与 WebView 内暗色主题统一配色 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_dialog_update"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:paddingTop="28dp"
+    android:paddingBottom="20dp">
+
+    <!-- 顶部：图标 + 版本徽章 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="14dp">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_update_badge"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/tvVersionBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:textColor="#00C4CD"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-medium"
+            android:background="#0A2E33"
+            android:text="v1.0.2" />
+    </LinearLayout>
+
+    <!-- 标题 -->
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#00C4CD"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-medium"
+        android:text="发现新版本 v1.0.2"
+        android:layout_marginBottom="10dp" />
+
+    <!-- 更新说明 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="220dp"
+        android:layout_marginBottom="8dp"
+        android:scrollbars="none">
+
+        <TextView
+            android:id="@+id/tvNotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#E8E8EA"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif"
+            android:lineSpacingMultiplier="1.35"
+            android:text="1. 修复若干问题\n2. 优化体验" />
+    </ScrollView>
+
+    <!-- 发布时间 -->
+    <TextView
+        android:id="@+id/tvPublishedAt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#9CA0A6"
+        android:textSize="12sp"
+        android:fontFamily="sans-serif"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 占位：当有发布时间时撑开间距；无发布时间时由上方 notes margin 控制 -->
+    <Space
+        android:id="@+id/spaceBottom"
+        android:layout_width="match_parent"
+        android:layout_height="8dp" />
+
+    <!-- 按钮行 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <TextView
+            android:id="@+id/btnLater"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:layout_marginEnd="10dp"
+            android:gravity="center"
+            android:textColor="#9CA0A6"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-medium"
+            android:background="@drawable/bg_btn_update_ghost"
+            android:text="稍后"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/btnUpdate"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-medium"
+            android:background="@drawable/bg_btn_update_primary"
+            android:text="立即更新"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
+
+</LinearLayout>

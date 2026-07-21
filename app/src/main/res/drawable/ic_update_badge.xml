@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 更新徽标：青色圆底 + 白色向上箭头（象形"升级"） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+    <!-- 圆形底 -->
+    <path
+        android:fillColor="#0A2E33"
+        android:pathData="M20,20m-18,0a18,18 0,1 1,36 0a18,18 0,1 1,-36 0" />
+    <path
+        android:fillColor="#00C4CD"
+        android:pathData="M20,20m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+    <!-- 向上箭头（下载/升级象形） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M20,10 L20,26 M13,17 L20,10 L27,17" />
+    <!-- 底部横线 -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M13,28 L27,28" />
+</vector>
