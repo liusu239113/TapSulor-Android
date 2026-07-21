@@ -23,9 +23,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updateChecker: UpdateChecker
     private lateinit var bottomNav: BottomNavigationView
     private lateinit var tabContainer: FrameLayout
+    private lateinit var bottomDivider: View
 
     // 当前选中的 tab id
     private var currentTabId: Int = R.id.nav_home
+    // 冷启动开屏阶段底栏是否已经显示（避免 onPageFinished 多次触发重复显示）
+    private var bottomNavShown = false
 
     // Fragment 缓存（避免每次切换都重建 WebView）
     private var makerFragment: MakerWebFragment? = null
@@ -53,6 +56,8 @@ class MainActivity : AppCompatActivity() {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val TAPTAP_REFERER = "https://developer.taptap.cn/"
         private const val BACKGROUND_REFRESH_INTERVAL_MS = 5L * 60L * 1000L  // 5 分钟
+        // 冷启动开屏阶段底部导航延迟显示时间:等主页 webapp 开屏动画播完再露出 Tab 栏
+        private const val BOTTOM_NAV_SHOW_DELAY_MS = 1500L
         private val imageExtensions = arrayOf(
             ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".ico", ".bmp"
         )
@@ -68,6 +73,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         tabContainer = findViewById(R.id.tab_container)
         bottomNav = findViewById(R.id.bottom_nav)
+        bottomDivider = findViewById(R.id.bottom_divider)
 
         // 1) 创建主页 WebView（原有逻辑），直接放进 tab_container
         webView = WebView(this).apply outer@{
@@ -104,6 +110,18 @@ class MainActivity : AppCompatActivity() {
                         return fetchImageViaOkHttp(url)
                     }
                     return null
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    // 冷启动时主页 index.html 加载完成后,等待 webapp 自身开屏动画结束,
+                    // 再显示底部导航栏,避免在开屏画面上露出 Tab 条(符合用户反馈要求)
+                    if (!bottomNavShown) {
+                        bottomNavShown = true
+                        mainHandler.postDelayed({
+                            bottomDivider.visibility = View.VISIBLE
+                            bottomNav.visibility = View.VISIBLE
+                        }, BOTTOM_NAV_SHOW_DELAY_MS)
+                    }
                 }
             }
             webChromeClient = WebChromeClient()
