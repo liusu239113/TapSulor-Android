@@ -106,6 +106,42 @@
   line-height: 1.2;
 }
 
+/* 后台管理按钮 */
+.backend-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 6px;
+}
+
+.backend-btn:hover {
+  border-color: var(--taptap-cyan);
+  color: var(--taptap-cyan);
+  background: var(--taptap-cyan-light);
+}
+
+.backend-btn:active {
+  transform: scale(0.96);
+}
+
+[data-theme="dark"] .backend-btn {
+  background: var(--bg-muted);
+}
+
+[data-theme="dark"] .backend-btn:hover {
+  background: var(--taptap-cyan-light);
+}
+
 /* ========== 游戏概览卡片 ========== */
 .overview-card {
   display: flex;

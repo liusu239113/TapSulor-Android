@@ -1,0 +1,501 @@
+/* ========== TapSulor Dark Cyan Theme for TapTap Developer Backend ========== */
+/* Applies dark cyan theme to developer.taptap.cn pages inside BackendWebView */
+
+:root {
+  --ts-cyan: #00C4CD;
+  --ts-cyan-light: #0A2E33;
+  --ts-cyan-dark: #00A8B0;
+  --ts-bg-page: #131416;
+  --ts-bg-card: #1E1F23;
+  --ts-bg-muted: #2A2B30;
+  --ts-bg-hover: #2F3136;
+  --ts-bg-input: #25262B;
+  --ts-text-primary: #E8E8EA;
+  --ts-text-secondary: #9CA0A6;
+  --ts-text-tertiary: #6B7078;
+  --ts-border: #2C2D31;
+  --ts-danger: #FF6B6B;
+  --ts-success: #36C9A0;
+  --ts-warning: #F5A623;
+}
+
+/* ===== Global overrides ===== */
+html, body {
+  background-color: var(--ts-bg-page) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+body,
+div, span, p, a, li, td, th, label,
+h1, h2, h3, h4, h5, h6 {
+  color: inherit;
+}
+
+/* White/light backgrounds → dark */
+[style*="background: #fff"],
+[style*="background:#fff"],
+[style*="background: #FFF"],
+[style*="background-color: #fff"],
+[style*="background-color: white"],
+[style*="background: white"] {
+  background-color: var(--ts-bg-card) !important;
+}
+
+[style*="background: #f5"],
+[style*="background: #F5"],
+[style*="background: #f8"],
+[style*="background: #F8"],
+[style*="background: #fa"],
+[style*="background: #FA"] {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+/* ===== Top navigation bar ===== */
+/* TapTap dev console typically has a white top nav */
+header,
+nav,
+.top-bar,
+.topbar,
+.nav-bar,
+.navbar,
+.app-header,
+.app-header-wrapper,
+.tap-header,
+.header-wrapper,
+.tdc-header,
+.developer-header,
+[class*="Header"],
+[class*="header-wrapper"],
+[class*="top-bar"],
+[class*="navbar"],
+[class*="Nav"] {
+  background-color: var(--ts-bg-card) !important;
+  border-bottom-color: var(--ts-border) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+[class*="Header"] a,
+[class*="Nav"] a,
+[class*="header"] a,
+[class*="menu"] a {
+  color: var(--ts-text-secondary) !important;
+}
+
+[class*="Header"] a:hover,
+[class*="Nav"] a:hover,
+[class*="active"] > a,
+[class*="selected"] > a {
+  color: var(--ts-cyan) !important;
+}
+
+/* ===== Sidebar ===== */
+[class*="sidebar"],
+[class*="Sidebar"],
+[class*="side-menu"],
+[class*="aside"],
+.aside,
+aside {
+  background-color: var(--ts-bg-card) !important;
+  border-right-color: var(--ts-border) !important;
+}
+
+[class*="sidebar"] a,
+[class*="side-menu"] a,
+aside a {
+  color: var(--ts-text-secondary) !important;
+}
+
+[class*="sidebar"] a:hover,
+[class*="side-menu"] a:hover,
+[class*="menu-item"]:hover {
+  background-color: var(--ts-bg-muted) !important;
+  color: var(--ts-cyan) !important;
+}
+
+[class*="active"][class*="menu-item"],
+[class*="menu-item"][class*="active"],
+[class*="selected"][class*="menu-item"],
+.ant-menu-item-selected,
+.ant-menu-submenu-selected {
+  background-color: var(--ts-cyan-light) !important;
+  color: var(--ts-cyan) !important;
+}
+
+/* ===== Cards / Panels ===== */
+[class*="card"],
+[class*="Card"],
+[class*="panel"],
+[class*="Panel"],
+[class*="container"],
+[class*="wrapper"],
+.ant-card,
+.ant-layout-content,
+.ant-modal-content,
+.ant-drawer-content,
+.ant-popover-inner,
+.ant-tooltip-inner {
+  background-color: var(--ts-bg-card) !important;
+  border-color: var(--ts-border) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+/* ===== Tables ===== */
+table, thead, tbody, tr, td, th {
+  background-color: transparent !important;
+  border-color: var(--ts-border) !important;
+}
+
+thead th,
+tr:nth-child(even) td,
+[class*="table"] th {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+tr:hover td {
+  background-color: var(--ts-bg-hover) !important;
+}
+
+/* ===== Forms / Inputs ===== */
+input, textarea, select,
+.ant-input,
+.ant-select-selector,
+.ant-input-number,
+.ant-picker {
+  background-color: var(--ts-bg-input) !important;
+  border-color: var(--ts-border) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--ts-text-tertiary) !important;
+}
+
+input:focus, textarea:focus, select:focus,
+.ant-input:focus, .ant-input-focused,
+.ant-select-focused .ant-select-selector {
+  border-color: var(--ts-cyan) !important;
+  box-shadow: 0 0 0 2px rgba(0, 196, 205, 0.2) !important;
+}
+
+/* ===== Buttons ===== */
+button,
+.ant-btn,
+[class*="btn"],
+[class*="Button"] {
+  border-radius: 6px !important;
+}
+
+.ant-btn-primary,
+[class*="btn-primary"],
+button[class*="primary"] {
+  background-color: var(--ts-cyan) !important;
+  border-color: var(--ts-cyan) !important;
+  color: #fff !important;
+}
+
+.ant-btn-primary:hover,
+[class*="btn-primary"]:hover {
+  background-color: var(--ts-cyan-dark) !important;
+  border-color: var(--ts-cyan-dark) !important;
+}
+
+.ant-btn-default,
+[class*="btn-default"] {
+  background-color: var(--ts-bg-muted) !important;
+  border-color: var(--ts-border) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+/* ===== Tabs ===== */
+.ant-tabs-tab,
+[class*="tab"],
+[class*="Tab"] {
+  color: var(--ts-text-secondary) !important;
+}
+
+.ant-tabs-tab-active .ant-tabs-tab-btn,
+[class*="tab"][class*="active"],
+[class*="Tab"][class*="active"] {
+  color: var(--ts-cyan) !important;
+}
+
+.ant-tabs-ink-bar,
+[class*="tab-indicator"],
+[class*="active-bar"] {
+  background-color: var(--ts-cyan) !important;
+}
+
+.ant-tabs-nav::before {
+  border-bottom-color: var(--ts-border) !important;
+}
+
+/* ===== Tags / Badges ===== */
+.ant-tag,
+[class*="tag"],
+[class*="badge"] {
+  border-radius: 4px !important;
+}
+
+/* ===== Links ===== */
+a {
+  color: var(--ts-cyan) !important;
+}
+
+a:hover {
+  color: var(--ts-cyan-dark) !important;
+}
+
+/* ===== Modal / Drawer / Overlay ===== */
+.ant-modal-mask,
+.ant-drawer-mask,
+.ant-popover-mask {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* ===== Dropdown / Menu ===== */
+.ant-dropdown-menu,
+.ant-menu,
+[class*="dropdown"],
+[class*="Dropdown"] {
+  background-color: var(--ts-bg-card) !important;
+  border-color: var(--ts-border) !important;
+}
+
+.ant-dropdown-menu-item,
+.ant-menu-item,
+[class*="dropdown-item"] {
+  color: var(--ts-text-secondary) !important;
+}
+
+.ant-dropdown-menu-item:hover,
+.ant-menu-item:hover {
+  background-color: var(--ts-bg-muted) !important;
+  color: var(--ts-cyan) !important;
+}
+
+/* ===== Breadcrumb ===== */
+.ant-breadcrumb,
+[class*="breadcrumb"] {
+  color: var(--ts-text-tertiary) !important;
+}
+
+.ant-breadcrumb a {
+  color: var(--ts-text-secondary) !important;
+}
+
+/* ===== Pagination ===== */
+.ant-pagination-item {
+  background-color: var(--ts-bg-muted) !important;
+  border-color: var(--ts-border) !important;
+}
+
+.ant-pagination-item a {
+  color: var(--ts-text-secondary) !important;
+}
+
+.ant-pagination-item-active {
+  border-color: var(--ts-cyan) !important;
+}
+
+.ant-pagination-item-active a {
+  color: var(--ts-cyan) !important;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ts-bg-page);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ts-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ts-text-tertiary);
+}
+
+/* ===== Code / Pre ===== */
+code, pre, [class*="code"] {
+  background-color: var(--ts-bg-muted) !important;
+  border-color: var(--ts-border) !important;
+  color: var(--ts-text-secondary) !important;
+}
+
+/* ===== Switch / Toggle ===== */
+.ant-switch {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+.ant-switch-checked {
+  background-color: var(--ts-cyan) !important;
+}
+
+/* ===== Checkbox / Radio ===== */
+.ant-checkbox-inner,
+.ant-radio-inner {
+  background-color: var(--ts-bg-input) !important;
+  border-color: var(--ts-border) !important;
+}
+
+.ant-checkbox-checked .ant-checkbox-inner,
+.ant-radio-checked .ant-radio-inner {
+  background-color: var(--ts-cyan) !important;
+  border-color: var(--ts-cyan) !important;
+}
+
+/* ===== Notification / Message ===== */
+.ant-message-notice-content,
+.ant-notification-notice,
+[class*="message"],
+[class*="notification"],
+[class*="toast"] {
+  background-color: var(--ts-bg-card) !important;
+  border-color: var(--ts-border) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+/* ===== Steps / Progress ===== */
+.ant-steps-item-title,
+.ant-steps-item-description {
+  color: var(--ts-text-secondary) !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-title,
+.ant-steps-item-process .ant-steps-item-title {
+  color: var(--ts-text-primary) !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-icon {
+  background-color: var(--ts-cyan-light) !important;
+  border-color: var(--ts-cyan) !important;
+  color: var(--ts-cyan) !important;
+}
+
+.ant-progress-bg {
+  background-color: var(--ts-cyan) !important;
+}
+
+/* ===== Upload / File area ===== */
+.ant-upload,
+[class*="upload"],
+[class*="dropzone"],
+[class*="file-upload"] {
+  background-color: var(--ts-bg-muted) !important;
+  border-color: var(--ts-border) !important;
+}
+
+/* ===== Date picker / Calendar ===== */
+.ant-picker-dropdown,
+.ant-picker-panel {
+  background-color: var(--ts-bg-card) !important;
+  border-color: var(--ts-border) !important;
+}
+
+.ant-picker-cell-in-view {
+  color: var(--ts-text-primary) !important;
+}
+
+.ant-picker-cell:hover .ant-picker-cell-inner {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+.ant-picker-cell-selected .ant-picker-cell-inner,
+.ant-picker-cell-today .ant-picker-cell-inner::before {
+  border-color: var(--ts-cyan) !important;
+}
+
+.ant-picker-cell-selected .ant-picker-cell-inner {
+  background-color: var(--ts-cyan) !important;
+  color: #fff !important;
+}
+
+/* ===== Tooltip ===== */
+.ant-tooltip {
+  --antd-arrow-background-color: var(--ts-bg-card);
+}
+
+.ant-tooltip-inner {
+  background-color: var(--ts-bg-card) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+/* ===== Empty / Loading states ===== */
+.ant-empty-description,
+[class*="empty"],
+[class*="loading"] {
+  color: var(--ts-text-tertiary) !important;
+}
+
+.ant-spin-dot-item {
+  background-color: var(--ts-cyan) !important;
+}
+
+/* ===== Stat / Number displays ===== */
+[class*="statistic"],
+[class*="stat-value"],
+[class*="number"] {
+  color: var(--ts-text-primary) !important;
+}
+
+/* ===== Images/avatars ===== */
+[class*="avatar"] {
+  border-color: var(--ts-border) !important;
+}
+
+/* ===== Divider ===== */
+.ant-divider,
+hr {
+  border-color: var(--ts-border) !important;
+}
+
+/* ===== Select dropdown panel ===== */
+.ant-select-dropdown,
+.ant-select-item {
+  background-color: var(--ts-bg-card) !important;
+  color: var(--ts-text-primary) !important;
+}
+
+.ant-select-item-option-selected {
+  background-color: var(--ts-cyan-light) !important;
+  color: var(--ts-cyan) !important;
+}
+
+.ant-select-item-option-active {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+/* ===== Tree ===== */
+.ant-tree {
+  color: var(--ts-text-secondary) !important;
+  background-color: transparent !important;
+}
+
+.ant-tree-node-content-wrapper:hover {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+.ant-tree-node-selected {
+  background-color: var(--ts-cyan-light) !important;
+  color: var(--ts-cyan) !important;
+}
+
+/* ===== Cascader ===== */
+.ant-cascader-menu {
+  background-color: var(--ts-bg-card) !important;
+  border-color: var(--ts-border) !important;
+}
+
+.ant-cascader-menu-item:hover {
+  background-color: var(--ts-bg-muted) !important;
+}
+
+.ant-cascader-menu-item-active {
+  background-color: var(--ts-cyan-light) !important;
+  color: var(--ts-cyan) !important;
+}
