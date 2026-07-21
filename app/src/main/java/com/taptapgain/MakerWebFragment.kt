@@ -156,9 +156,10 @@ class MakerWebFragment : Fragment() {
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
-                    return if (url.startsWith("https://maker.taptap.cn") ||
-                               url.startsWith("https://developer.taptap.cn") ||
-                               url.startsWith("https://www.taptap.cn")) {
+                    val host = request.url.host ?: ""
+                    // 所有 taptap.cn 子域(含登录 accounts/i/www 等)都留在 WebView 内完成,
+                    // 避免登录流程跳出到外部浏览器导致 cookie 断裂
+                    return if (host == "taptap.cn" || host.endsWith(".taptap.cn")) {
                         false
                     } else {
                         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {}
