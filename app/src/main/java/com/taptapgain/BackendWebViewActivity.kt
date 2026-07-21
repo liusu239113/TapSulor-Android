@@ -31,8 +31,8 @@ class BackendWebViewActivity : AppCompatActivity() {
     private var themedViews: ThemedViews? = null
 
     companion object {
-        private const val DESKTOP_UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        // 使用真实 WebView UA(仅去掉 "; wv" 标识),避免被检测为 WebView。
+        // 不伪装成桌面 Chrome,防止内嵌的控制台/WebGL 能力检测失败。
         const val EXTRA_APP_ID = "extra_app_id"
         const val EXTRA_APP_NAME = "extra_app_name"
         private const val REQUEST_FILE_CHOOSER = 1001
@@ -142,6 +142,9 @@ class BackendWebViewActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // 强制硬件加速(WebGL2 / 控制台图表必需)
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            WebView.setWebContentsDebuggingEnabled(true)
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -151,13 +154,21 @@ class BackendWebViewActivity : AppCompatActivity() {
                 setSupportZoom(true)
                 builtInZoomControls = true
                 displayZoomControls = false
-                userAgentString = DESKTOP_UA
+                // 使用真实 WebView UA,仅移除 "; wv" 标识(与首页一致)
+                userAgentString = settings.userAgentString.replace("; wv", "")
                 allowFileAccess = true
                 allowContentAccess = true
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                allowFileAccessFromFileURLs = true
+                allowUniversalAccessFromFileURLs = true
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                javaScriptCanOpenWindowsAutomatically = true
+                setSupportMultipleWindows(true)
+                setGeolocationEnabled(true)
+                loadsImagesAutomatically = true
+                cacheMode = WebSettings.LOAD_DEFAULT
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
-                // 允许无用户手势自动播放音频(与首页 WebView 行为一致)
+                // 允许无用户手势自动播放音频
                 mediaPlaybackRequiresUserGesture = false
             }
 
@@ -192,6 +203,33 @@ class BackendWebViewActivity : AppCompatActivity() {
                     } else {
                         titleText.text = appName
                     }
+                }
+
+                // 处理 window.open() 弹出窗口(登录授权等),在当前 WebView 内跳转
+                override fun onCreateWindow(
+                    view: WebView?,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: android.os.Message?
+                ): Boolean {
+                    val newWebView = WebView(this@BackendWebViewActivity)
+                    newWebView.settings.javaScriptEnabled = true
+                    newWebView.webChromeClient = this
+                    newWebView.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            v: WebView,
+                            request: WebResourceRequest
+                        ): Boolean {
+                            webView.post { webView.loadUrl(request.url.toString()) }
+                            newWebView.destroy()
+                            (resultMsg?.obj as? WebView.WebViewTransport)?.webView = newWebView
+                            resultMsg?.sendToTarget()
+                            return true
+                        }
+                    }
+                    (resultMsg?.obj as? WebView.WebViewTransport)?.webView = newWebView
+                    resultMsg?.sendToTarget()
+                    return true
                 }
 
                 // File chooser for APK/image uploads

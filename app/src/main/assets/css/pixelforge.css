@@ -38,9 +38,9 @@
   --shadow-hover:4px 4px 0 var(--accent);
   color-scheme:light;
 
-  /* 字体（默认像素体，可通过 [data-font] 切换） */
-  --font-body:PixelForge,"Microsoft YaHei",sans-serif;
-  --font-mono:PixelMono,monospace;
+  /* 字体（默认系统字体,可通过 [data-font] 切换像素/潮酷） */
+  --font-body:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --font-mono:"SF Mono","Fira Code",Consolas,"PingFang SC","Microsoft YaHei",monospace;
 }
 
 /* 字体方案：像素体 */
@@ -142,7 +142,7 @@ button{border-radius:0!important}
 .app{max-width:760px;padding:0 16px calc(42px + env(safe-area-inset-bottom));position:relative}
 
 /* ============ 控制台顶栏（command bar） ============ */
-.command-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(14px + env(safe-area-inset-top)) 0 10px;border-bottom:2px dashed var(--border-light);margin-bottom:12px}
+.command-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 0 10px;border-bottom:2px dashed var(--border-light);margin-bottom:12px}
 .brand-chip{display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;background:var(--bg-card);border:2px solid var(--border-light);box-shadow:3px 3px 0 var(--border-strong)}
 .brand-chip-logo{width:30px;height:30px;display:block;object-fit:contain;image-rendering:pixelated;background:var(--accent);padding:3px;flex-shrink:0}
 .brand-chip-copy{display:flex;flex-direction:column;gap:1px;line-height:1}

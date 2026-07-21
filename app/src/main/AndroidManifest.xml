@@ -8,7 +8,8 @@
         android:label="TapSulor"
         android:supportsRtl="true"
         android:theme="@style/Theme.TapTapGain"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:hardwareAccelerated="true">
         <activity android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"

@@ -23,8 +23,10 @@ class MakerWebFragment : Fragment() {
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     companion object {
-        private const val DESKTOP_UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        // 使用真实 WebView UA(仅去掉 "; wv" 标识),避免被检测为 WebView。
+        // 不要伪装成桌面 Chrome 高版本,否则内嵌的游戏运行时(SCE/WASM/WebGL2)
+        // 会走"桌面新版 Chrome"路径,调用 Android WebView 实际不支持的 API,
+        // 导致弹出"浏览器不支持游戏所需运行环境"。
         private const val MAKER_URL = "https://maker.taptap.cn/"
         private const val REQUEST_FILE_CHOOSER = 2001
     }
@@ -127,6 +129,10 @@ class MakerWebFragment : Fragment() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // 强制硬件加速(WebGL2 / 游戏运行时必需;部分设备默认关闭会导致游戏 iframe 弹"浏览器不支持")
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            // 允许 WebView 调试(便于排查 WebGL/UA 问题;Release 包可由 App 统一开关)
+            WebView.setWebContentsDebuggingEnabled(true)
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -136,14 +142,24 @@ class MakerWebFragment : Fragment() {
                 setSupportZoom(true)
                 builtInZoomControls = true
                 displayZoomControls = false
-                userAgentString = DESKTOP_UA
+                // 使用真实 WebView UA,仅移除 "; wv" 标识(与首页 WebView 一致)。
+                // 不要伪装桌面 Chrome,否则内嵌游戏运行时能力检测会失败。
+                userAgentString = settings.userAgentString.replace("; wv", "")
                 allowFileAccess = true
                 allowContentAccess = true
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                allowFileAccessFromFileURLs = true
+                allowUniversalAccessFromFileURLs = true
+                // 允许 https 页面加载 http 子资源 / iframe(游戏预览 iframe 可能混用资源)
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                javaScriptCanOpenWindowsAutomatically = true
+                setSupportMultipleWindows(true)
+                setGeolocationEnabled(true)
+                loadsImagesAutomatically = true
+                mediaPlaybackRequiresUserGesture = false
+                // 启用 WebView 缓存(默认 LOAD_DEFAULT 即可)
+                cacheMode = WebSettings.LOAD_DEFAULT
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
-                // 允许无用户手势自动播放音频(与首页 WebView 行为一致)
-                mediaPlaybackRequiresUserGesture = false
             }
 
             webViewClient = object : WebViewClient() {
@@ -154,6 +170,34 @@ class MakerWebFragment : Fragment() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    // Maker 远程页自己会预留顶部状态栏/工具栏空间;由于我们已经有 48dp 原生顶栏,
+                    // 再叠一层网页侧 padding-top 会出现大块留白。注入样式将顶部空隙清零。
+                    view?.evaluateJavascript(
+                        """(function(){
+                            var s=document.getElementById('__tapsulor_topfix__');
+                            if(!s){
+                                s=document.createElement('style');
+                                s.id='__tapsulor_topfix__';
+                                s.textContent='html,body{padding-top:0!important;margin-top:0!important;}'+
+                                    'body>*:first-child{margin-top:0!important;padding-top:0!important;}';
+                                document.head.appendChild(s);
+                            }
+                            // 如果页面把内容区做了 padding-top,也尝试清零常见容器
+                            var cands=document.querySelectorAll('[class*="safe-area"],[class*="SafeArea"],[class*="top-bar"],[class*="TopBar"],[class*="navbar"],[class*="Navbar"],header');
+                            for(var i=0;i<cands.length;i++){
+                                var el=cands[i];
+                                var cs=getComputedStyle(el);
+                                if((cs.position==='fixed'||cs.position==='sticky')&&parseFloat(cs.top)===0){
+                                    el.style.display='none';
+                                }else{
+                                    el.style.paddingTop='0';
+                                    el.style.marginTop='0';
+                                }
+                            }
+                            window.scrollTo(0,0);
+                        })();""",
+                        null
+                    )
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -178,6 +222,37 @@ class MakerWebFragment : Fragment() {
                     } else {
                         titleText.text = "Tap制造"
                     }
+                }
+
+                // 处理 window.open() 弹出的新窗口(taptap 登录/授权/分享 等可能会用):
+                // 在当前 WebView 内加载目标 URL,而不是丢弃
+                override fun onCreateWindow(
+                    view: WebView?,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: android.os.Message?
+                ): Boolean {
+                    val newWebView = WebView(requireContext())
+                    newWebView.settings.javaScriptEnabled = true
+                    newWebView.webChromeClient = this
+                    newWebView.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            v: WebView,
+                            request: WebResourceRequest
+                        ): Boolean {
+                            // 把 popup URL 转到主 webView 里,在当前页面内跳转
+                            webView.post { webView.loadUrl(request.url.toString()) }
+                            // 销毁临时 WebView
+                            newWebView.destroy()
+                            // 把假的 WebView 回传给 Chromium,避免它一直等 transport
+                            (resultMsg?.obj as? WebView.WebViewTransport)?.webView = newWebView
+                            resultMsg?.sendToTarget()
+                            return true
+                        }
+                    }
+                    (resultMsg?.obj as? WebView.WebViewTransport)?.webView = newWebView
+                    resultMsg?.sendToTarget()
+                    return true
                 }
 
                 override fun onShowFileChooser(
