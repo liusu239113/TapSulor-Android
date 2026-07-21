@@ -1,6 +1,7 @@
 package com.taptapgain
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -85,6 +86,16 @@ class WebAppInterface(
     /** 触发一次手动检查更新（非静默；已是最新或失败都会 Toast 提示，发现新版本则弹窗） */
     @JavascriptInterface fun checkUpdate() {
         activity.runOnUiThread { updateChecker.check(silent = false) }
+    }
+
+    /** Web 端主题/字体偏好同步到原生 SharedPreferences（冷启动时原生更新弹窗也能跟随） */
+    @JavascriptInterface fun syncPreferences(mode: String?, accent: String?, font: String?) {
+        val prefs = activity.getSharedPreferences("taptap_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("theme_mode", mode ?: "light")
+            .putString("theme_accent", accent ?: "cyan")
+            .putString("font_family", font ?: "default")
+            .apply()
     }
 
     @JavascriptInterface fun openLogin(mode: String?) {

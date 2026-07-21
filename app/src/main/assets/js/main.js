@@ -15,6 +15,7 @@
   // ========== 主题与设置（最早执行，避免白闪） ==========
   const THEME_KEY = 'taptap_theme_mode';     // 'light' | 'dark'
   const ACCENT_KEY = 'taptap_theme_accent';  // 'cyan' | 'pink' | 'purple' | 'mint'
+  const FONT_KEY = 'taptap_font_family';     // 'default' | 'pixel' | 'chaoku'
   const SOUND_KEY = 'taptap_sound_enabled';  // '1' | '0'
   const SETTINGS_KEYS = {
     monthGoal: 'taptap_month_goal',
@@ -43,10 +44,19 @@
     }
   }
 
+  // 应用字体
+  function applyFont(font) {
+    const root = document.documentElement;
+    if (font && font !== 'default') root.setAttribute('data-font', font);
+    else root.removeAttribute('data-font');
+  }
+
   // 启动时立刻从 localStorage 读取并应用（避免白闪）
   const savedMode = localStorage.getItem(THEME_KEY) || 'light';
   const savedAccent = localStorage.getItem(ACCENT_KEY) || 'cyan';
+  const savedFont = localStorage.getItem(FONT_KEY) || 'default';
   applyTheme(savedMode, savedAccent);
+  applyFont(savedFont);
   // 音效开关：默认开启（本地存储值为 '0' 时才关闭）
   try { soundEnabled = localStorage.getItem(SOUND_KEY) !== '0'; } catch (_) { soundEnabled = true; }
 
@@ -1467,6 +1477,18 @@
     });
   }
 
+  // 把主题/字体偏好同步给原生层（Android Bridge），让原生弹窗能跟随
+  function syncPreferencesToNative() {
+    try {
+      const m = localStorage.getItem(THEME_KEY) || 'light';
+      const a = localStorage.getItem(ACCENT_KEY) || 'cyan';
+      const f = localStorage.getItem(FONT_KEY) || 'default';
+      if (window.AndroidBridge && typeof window.AndroidBridge.syncPreferences === 'function') {
+        window.AndroidBridge.syncPreferences(m, a, f);
+      }
+    } catch (_) {}
+  }
+
   if (settingsBtn) {
     settingsBtn.addEventListener('click', openSettings);
     settingsOverlay.addEventListener('click', closeSettings);
@@ -1488,6 +1510,7 @@
         applyTheme(mode, null);
         modeSwitch.querySelectorAll('button').forEach(b => b.classList.toggle('is-active', b === btn));
         playSfx('click');
+        syncPreferencesToNative();
       });
     }
     // 强调色选择
@@ -1504,6 +1527,25 @@
         applyTheme(null, accent);
         themeDots.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('is-active', d === dot));
         playSfx('click');
+        syncPreferencesToNative();
+      });
+    }
+
+    // 字体选择
+    const fontSwitch = document.getElementById('font-switch');
+    if (fontSwitch) {
+      fontSwitch.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('is-active', b.dataset.font === savedFont);
+      });
+      fontSwitch.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-font]');
+        if (!btn) return;
+        const font = btn.dataset.font;
+        try { localStorage.setItem(FONT_KEY, font); } catch (_) {}
+        applyFont(font);
+        fontSwitch.querySelectorAll('button').forEach(b => b.classList.toggle('is-active', b === btn));
+        playSfx('click');
+        syncPreferencesToNative();
       });
     }
 

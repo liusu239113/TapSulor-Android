@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 版本徽章：青色实心圆角胶囊（对齐"当前"账号徽章风格） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#00C4CD" />
+    <corners android:radius="4dp" />
+</shape>

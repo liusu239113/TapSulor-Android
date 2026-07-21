@@ -1,22 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 主按钮：青色填充，圆角 8dp，按下略暗 -->
+<!-- 主按钮：青色实心 + 下方暗青色凸起边（像素/Win95 风），圆角 4dp -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#00A8B0" />
-            <corners android:radius="8dp" />
-        </shape>
-    </item>
-    <item android:state_enabled="false">
-        <shape android:shape="rectangle">
-            <solid android:color="#2A6B72" />
-            <corners android:radius="8dp" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <solid android:color="#00A8B0" />
+                    <corners android:radius="4dp" />
+                </shape>
+            </item>
+            <!-- 按下时顶/左 2dp 暗色，模拟"按下"凹陷 -->
+            <item android:top="2dp" android:left="2dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#008B92" />
+                    <corners android:radius="4dp" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
     <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#00C4CD" />
-            <corners android:radius="8dp" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <solid android:color="#00A8B0" />
+                    <corners android:radius="4dp" />
+                </shape>
+            </item>
+            <!-- 凸起：主色块向上/左偏移 2dp，露出下方暗青色边 -->
+            <item android:bottom="2dp" android:right="2dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#00C4CD" />
+                    <corners android:radius="4dp" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
 </selector>

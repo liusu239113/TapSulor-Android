@@ -1,100 +1,134 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TapSulor 暗色更新弹窗布局：与 WebView 内暗色主题统一配色 -->
+<!-- TapSulor 更新弹窗：浅色像素/Win95 风，与 app 控制面板视觉一致 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dialogRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/bg_dialog_update"
-    android:paddingStart="24dp"
-    android:paddingEnd="24dp"
-    android:paddingTop="28dp"
+    android:paddingStart="22dp"
+    android:paddingEnd="22dp"
+    android:paddingTop="20dp"
     android:paddingBottom="20dp">
 
-    <!-- 顶部：图标 + 版本徽章 -->
-    <LinearLayout
+    <!-- 顶部行：左侧小标题+主标题，右侧红色 X 关闭按钮 -->
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
         android:layout_marginBottom="14dp">
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_update_badge"
-            android:contentDescription="@null" />
-
-        <TextView
-            android:id="@+id/tvVersionBadge"
+        <LinearLayout
+            android:id="@+id/titleGroup"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
-            android:textColor="#00C4CD"
-            android:textSize="12sp"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:orientation="vertical">
+
+            <!-- 小标题（与控制面板"控制面板"一致） -->
+            <TextView
+                android:id="@+id/tvLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#00C4CD"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:text="控制面板" />
+
+            <!-- 主标题 -->
+            <TextView
+                android:id="@+id/tvTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#1A1A1A"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:text="发现新版本" />
+        </LinearLayout>
+
+        <!-- 红色 X 关闭按钮（右上角，Win95 像素风） -->
+        <TextView
+            android:id="@+id/btnClose"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:gravity="center"
+            android:background="@drawable/bg_btn_close"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:fontFamily="sans-serif-medium"
-            android:background="#0A2E33"
-            android:text="v1.0.2" />
-    </LinearLayout>
+            android:includeFontPadding="false"
+            android:text="✕"
+            android:clickable="true"
+            android:focusable="true" />
+    </RelativeLayout>
 
-    <!-- 标题 -->
+    <!-- 版本徽章条：青色胶囊 + 白色版本号 -->
     <TextView
-        android:id="@+id/tvTitle"
-        android:layout_width="match_parent"
+        android:id="@+id/tvVersionBadge"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#00C4CD"
-        android:textSize="18sp"
+        android:layout_marginBottom="14dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:background="@drawable/bg_version_badge"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
         android:textStyle="bold"
         android:fontFamily="sans-serif-medium"
-        android:text="发现新版本 v1.0.2"
-        android:layout_marginBottom="10dp" />
+        android:includeFontPadding="false"
+        android:text="v1.0.2" />
 
     <!-- 更新说明 -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:maxHeight="220dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="6dp"
         android:scrollbars="none">
 
         <TextView
             android:id="@+id/tvNotes"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#E8E8EA"
+            android:textColor="#1A1A1A"
             android:textSize="14sp"
             android:fontFamily="sans-serif"
-            android:lineSpacingMultiplier="1.35"
+            android:lineSpacingMultiplier="1.45"
             android:text="1. 修复若干问题\n2. 优化体验" />
     </ScrollView>
 
-    <!-- 发布时间 -->
+    <!-- 发布时间（次要灰） -->
     <TextView
         android:id="@+id/tvPublishedAt"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="#9CA0A6"
+        android:textColor="#6B7280"
         android:textSize="12sp"
         android:fontFamily="sans-serif"
         android:visibility="gone"
         android:layout_marginBottom="16dp" />
 
-    <!-- 占位：当有发布时间时撑开间距；无发布时间时由上方 notes margin 控制 -->
+    <!-- 无发布时间时的底部间距占位 -->
     <Space
         android:id="@+id/spaceBottom"
         android:layout_width="match_parent"
-        android:layout_height="8dp" />
+        android:layout_height="10dp" />
 
-    <!-- 按钮行 -->
+    <!-- 按钮行：等宽的"稍后" + "立即更新" -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end">
+        android:orientation="horizontal">
 
         <TextView
             android:id="@+id/btnLater"
@@ -103,7 +137,7 @@
             android:layout_height="44dp"
             android:layout_marginEnd="10dp"
             android:gravity="center"
-            android:textColor="#9CA0A6"
+            android:textColor="#4A4F57"
             android:textSize="15sp"
             android:textStyle="bold"
             android:fontFamily="sans-serif-medium"

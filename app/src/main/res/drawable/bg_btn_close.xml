@@ -1,20 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 次按钮：白色底 + 灰描边 + 下/右 2dp 浅灰凸起边（像素/Win95 风） -->
+<!-- 关闭按钮：红色方块 + 下/右 2dp 暗红色凸起边（Win95 像素风） -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <layer-list>
             <item>
                 <shape android:shape="rectangle">
-                    <solid android:color="#D6D9DD" />
-                    <stroke android:width="1dp" android:color="#B8BDC4" />
-                    <corners android:radius="4dp" />
+                    <solid android:color="#C23A3A" />
                 </shape>
             </item>
             <item android:top="2dp" android:left="2dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="#C4C8CD" />
-                    <stroke android:width="1dp" android:color="#B8BDC4" />
-                    <corners android:radius="4dp" />
+                    <solid android:color="#E04848" />
                 </shape>
             </item>
         </layer-list>
@@ -23,15 +19,12 @@
         <layer-list>
             <item>
                 <shape android:shape="rectangle">
-                    <solid android:color="#C4C8CD" />
-                    <corners android:radius="4dp" />
+                    <solid android:color="#C23A3A" />
                 </shape>
             </item>
             <item android:bottom="2dp" android:right="2dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="#FFFFFF" />
-                    <stroke android:width="1dp" android:color="#B8BDC4" />
-                    <corners android:radius="4dp" />
+                    <solid android:color="#FF5252" />
                 </shape>
             </item>
         </layer-list>
