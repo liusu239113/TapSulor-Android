@@ -21,29 +21,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Diagnose network
-        run: |
-          echo "=== Proxy env vars ==="
-          env | grep -i proxy || echo "(no proxy vars)"
-          echo ""
-          echo "=== Test connectivity to Google Maven (curl) ==="
-          curl -sI --connect-timeout 10 https://dl.google.com/dl/android/maven2/com/android/application/com.android.application.gradle.plugin/8.2.0/com.android.application.gradle.plugin-8.2.0.pom | head -5 || echo "curl FAILED"
-          echo ""
-          echo "=== Test connectivity via Java ==="
-          java -version 2>&1
-          timeout 15 java -e 2>/dev/null; true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.2'
-          validate-wrappers: false
-          cache-disabled: true
+      - name: Grant execute permission
+        run: chmod +x gradlew
 
       - name: Build APK
-        run: gradle assembleRelease --no-daemon --stacktrace
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
