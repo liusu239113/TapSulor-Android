@@ -126,7 +126,7 @@ class BackendWebViewActivity : AppCompatActivity() {
             )
         }
 
-        webView = WebView(this).apply {
+        webView = WebView(this).apply webView@{
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -145,7 +145,7 @@ class BackendWebViewActivity : AppCompatActivity() {
                 allowContentAccess = true
                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this@apply, true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
             }
 
             webViewClient = object : WebViewClient() {
