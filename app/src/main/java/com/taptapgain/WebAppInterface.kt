@@ -11,7 +11,8 @@ class WebAppInterface(
     private val activity: Activity,
     private val webView: WebView,
     private val accountManager: AccountManager,
-    private val apiClient: TapTapApiClient
+    private val apiClient: TapTapApiClient,
+    private val updateChecker: UpdateChecker
 ) {
     private val gson = Gson()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -80,6 +81,11 @@ class WebAppInterface(
 
     /** 暴露 APP 版本号给 Web 端（来自 BuildConfig.VERSION_NAME，与 build.gradle.kts 同步） */
     @JavascriptInterface fun getAppVersion(): String = BuildConfig.VERSION_NAME
+
+    /** 触发一次手动检查更新（非静默；已是最新或失败都会 Toast 提示，发现新版本则弹窗） */
+    @JavascriptInterface fun checkUpdate() {
+        activity.runOnUiThread { updateChecker.check(silent = false) }
+    }
 
     @JavascriptInterface fun openLogin(mode: String?) {
         val intent = Intent(activity, LoginActivity::class.java)

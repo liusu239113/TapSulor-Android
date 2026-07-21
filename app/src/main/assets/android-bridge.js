@@ -87,6 +87,10 @@
       try { return AndroidBridge.getAppVersion ? AndroidBridge.getAppVersion() : ''; }
       catch (e) { return ''; }
     },
+    /** 手动触发检查更新（弹窗/Toast 由原生处理） */
+    checkUpdate: function () {
+      try { if (AndroidBridge.checkUpdate) AndroidBridge.checkUpdate(); } catch (e) {}
+    },
     /** APP 从后台回到前台 / 冷启动完成时触发（强刷，全量 init） */
     onAppResume: function (callback) { window.__onAppResume = callback; },
     /** APP 在后台每 5 分钟触发一次（轻量刷新：仅拉 app list + revenue） */

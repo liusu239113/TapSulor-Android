@@ -17,6 +17,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webAppInterface: WebAppInterface
     private lateinit var accountManager: AccountManager
     private lateinit var apiClient: TapTapApiClient
+    private lateinit var updateChecker: UpdateChecker
 
     // 后台定时刷新：onPause 启动，每 5 分钟触发一次轻量刷新（绕过 Chromium 后台节流）
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -48,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         enableImmersiveMode()
         accountManager = AccountManager(this)
         apiClient = TapTapApiClient(accountManager)
+        updateChecker = UpdateChecker(this)
         webView = WebView(this).apply outer@{
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.apply {
@@ -90,11 +92,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(webView)
-        webAppInterface = WebAppInterface(this, webView, accountManager, apiClient)
+        webAppInterface = WebAppInterface(this, webView, accountManager, apiClient, updateChecker)
         webAppInterface.register()
         accountManager.restoreCurrentCookies {
             webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
         }
+        // 冷启动后延迟 3 秒静默检查更新（不打扰用户，只在发现新版本时弹窗）
+        mainHandler.postDelayed({ updateChecker.check(silent = true) }, 3000)
     }
 
     @Deprecated("Use registerForActivityResult")
@@ -148,6 +152,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(backgroundRefreshRunnable)
+        updateChecker.destroy()
         webAppInterface.destroy()
         webView.destroy()
         super.onDestroy()

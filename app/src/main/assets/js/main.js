@@ -1457,6 +1457,19 @@
       });
     }
 
+    // 设置面板 → 系统信息 → 检查更新按钮
+    const checkUpdateBtn = document.getElementById('check-update-btn');
+    if (checkUpdateBtn) {
+      checkUpdateBtn.addEventListener('click', () => {
+        playSfx('click');
+        if (isElectron && window.electronAPI && window.electronAPI.checkUpdate) {
+          window.electronAPI.checkUpdate();
+        } else {
+          showToast('当前环境不支持检查更新');
+        }
+      });
+    }
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (studioDropdown && !studioDropdown.hidden) {

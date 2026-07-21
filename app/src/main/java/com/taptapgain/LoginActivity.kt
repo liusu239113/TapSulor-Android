@@ -2,12 +2,14 @@ package com.taptapgain
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Message
 import android.graphics.Bitmap
 import android.view.ViewGroup
 import android.webkit.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.lifecycleScope
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +72,10 @@ class LoginActivity : AppCompatActivity() {
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this@outer, true)
             webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = false
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val url = request?.url?.toString() ?: return false
+                    return interceptOAuthUrl(url)
+                }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
@@ -109,6 +114,81 @@ class LoginActivity : AppCompatActivity() {
         val match = Regex("/(?:v3|developer|developer-center)/([0-9]+)(?:/|$)").find(value)
             ?: Regex("[?&](?:developer_id|developerId|developerID)=([0-9]+)").find(value)
         return match?.groupValues?.getOrNull(1)
+    }
+
+    /**
+     * OAuth / native-scheme interception.
+     *
+     * Embedded WebView cannot dispatch non-http(s) schemes (weixin://, mqqapi://, …)
+     * to the system, so WeChat forces a PC QR and QQ hard-errors inside WebView.
+     *
+     * Strategy:
+     *  - Native schemes (weixin/mqq/mqqwpa/mqqopensdkapi/weixin/…) → ACTION_VIEW so the
+     *    installed WeChat/QQ app handles them directly.
+     *  - Web OAuth entry points (open.weixin.qq.com, graph.qq.com, passport.taptap.cn hops
+     *    to third-party auth) → Chrome Custom Tabs. The browser process can then launch the
+     *    native app and — on Chrome-based devices — shares cookies back into the app-wide
+     *    CookieManager so the existing probeDeveloperIdFromWebView() detects login on return.
+     *  - Everything else → return false to let the embedded WebView load normally (phone
+     *    login continues to work as before).
+     */
+    private fun interceptOAuthUrl(url: String): Boolean {
+        if (finished || isFinishing) return false
+        val uri = try { Uri.parse(url) } catch (_: Exception) { return false }
+        val scheme = uri.scheme?.lowercase() ?: return false
+        val host = uri.host?.lowercase() ?: ""
+
+        // 1) Native app schemes → hand off directly to the installed app.
+        val nativeSchemes = setOf("weixin", "mqqapi", "mqqwpa", "mqqopensdkapi", "mqqopensdk", "wechat")
+        if (scheme in nativeSchemes) {
+            return try {
+                startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } catch (_: Exception) {
+                // App not installed / no handler → fall through and let WebView try (will show error page).
+                false
+            }
+        }
+
+        // 2) Web OAuth endpoints that need to run in a real browser (so cookies/schemes work).
+        // TapTap passport stays in WebView unless it is actively bouncing to a third-party provider.
+        val isOAuthWeb: Boolean = when {
+            host == "open.weixin.qq.com" -> true
+            host == "graph.qq.com" || host.endsWith(".graph.qq.com") -> true
+            host == "xui.ptlogin2.qq.com" || host.endsWith(".ptlogin2.qq.com") -> true
+            host == "openmobile.qq.com" -> true
+            host == "weixin.qq.com" || host.endsWith(".weixin.qq.com") -> true
+            host == "passport.taptap.cn" && (url.contains("third_party") || url.contains("connect")) -> true
+            else -> false
+        }
+
+        if (isOAuthWeb && (scheme == "http" || scheme == "https")) {
+            return try {
+                val tabsIntent = CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                    .build()
+                tabsIntent.launchUrl(this, uri)
+                true
+            } catch (_: Exception) {
+                // No Custom Tabs provider → fall back to plain ACTION_VIEW.
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    true
+                } catch (_: Exception) { false }
+            }
+        }
+
+        return false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Returning from WeChat/QQ/Custom Tab: cookies may have just landed in CookieManager.
+        // Kick the native probe immediately so success is detected without waiting for a page load.
+        if (!finished && !isFinishing) {
+            webView.postDelayed({ checkLoginNatively() }, 300)
+        }
     }
 
     private fun scheduleLoginCheck(view: WebView?) {
