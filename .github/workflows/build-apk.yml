@@ -28,11 +28,8 @@ jobs:
           validate-wrappers: false
           cache-disabled: true
 
-      - name: Grant execute permission
-        run: chmod +x gradlew
-
       - name: Build APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: gradle assembleRelease --no-daemon
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
 
