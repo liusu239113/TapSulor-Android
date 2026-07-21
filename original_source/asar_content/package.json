@@ -1,8 +1,0 @@
-{
-  "name": "taptapgain",
-  "version": "1.0.1",
-  "description": "TapTap 开发者收入统计助手 - 多游戏概览 + 每日明细",
-  "main": "electron-main.js",
-  "author": "pantaooo",
-  "license": "MIT"
-}
