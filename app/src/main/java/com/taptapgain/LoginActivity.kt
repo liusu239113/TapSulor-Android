@@ -66,7 +66,10 @@ class LoginActivity : AppCompatActivity() {
                 setSupportZoom(true)
                 builtInZoomControls = true
                 displayZoomControls = false
-                userAgentString = settings.userAgentString.replace("; wv", "")
+                // 使用桌面 Chrome UA,让 QQ/微信 OAuth 显示桌面扫码/账号密码登录页,
+                // 避免它们尝试唤起原生 App(wtloginmqq:// / weixin://),保证整个授权
+                // 流程都在 WebView 内完成,cookie 全程不丢。
+                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             }
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this@outer, true)
