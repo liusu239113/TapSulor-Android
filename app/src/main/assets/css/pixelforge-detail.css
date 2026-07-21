@@ -28,7 +28,7 @@
   text-overflow:ellipsis;
 }
 .detail-brand .detail-game-id{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:8px;
   letter-spacing:1px;
   color:var(--text-tertiary);
@@ -43,7 +43,7 @@
   justify-content:center;
   background:var(--accent);
   color:#fff;
-  font-family:PixelForge,sans-serif;
+  font-family:var(--font-body);
   font-weight:700;
   font-size:14px;
   overflow:hidden;
@@ -79,7 +79,7 @@
   font-size:7px;
 }
 .detail-grand-tile strong{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:17px;
   color:#fff;
   text-shadow:2px 2px 0 rgba(0,0,0,.2);
@@ -108,7 +108,7 @@
   background:var(--accent-soft);
   border:2px solid var(--accent);
   color:var(--accent-ink);
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:10px;
   letter-spacing:1px;
   font-weight:700;
@@ -162,7 +162,7 @@
 }
 .mp-year-nav:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent)}
 .mp-year-label{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:12px;
   color:var(--accent-ink);
   letter-spacing:1px;
@@ -178,7 +178,7 @@
   background:var(--bg-muted);
   border:2px solid var(--border-light);
   color:var(--text-primary);
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:10px;
   letter-spacing:1px;
   text-align:center;
@@ -216,7 +216,7 @@
   gap:5px;
 }
 .ms-item b{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:13px;
   color:var(--accent-ink);
   letter-spacing:.5px;
@@ -224,11 +224,11 @@
 .ms-item i{
   color:var(--text-tertiary);
   font-style:normal;
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:9px;
   letter-spacing:1px;
 }
-.ms-sep{color:var(--border-strong);font-family:PixelMono,monospace;}
+.ms-sep{color:var(--border-strong);font-family:var(--font-mono);}
 
 /* ===== 日历表头 ===== */
 .cal-header{
@@ -238,7 +238,7 @@
   margin-bottom:6px;
   padding:6px 0;
   color:var(--text-tertiary);
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:10px;
   letter-spacing:1px;
   text-align:center;
@@ -275,7 +275,7 @@
 }
 .day-cell.is-clickable{cursor:pointer}
 .day-number{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:11px;
   color:var(--text-primary);
   font-weight:700;
@@ -283,7 +283,7 @@
 }
 .day-cell.is-other-month .day-number{color:var(--text-tertiary)}
 .day-revenue{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:11px;
   color:var(--accent-ink);
   font-weight:700;
@@ -291,7 +291,7 @@
   word-break:break-all;
 }
 .day-dau{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:9px;
   color:var(--text-tertiary);
   letter-spacing:.5px;
@@ -323,17 +323,17 @@
 }
 .day-modal-title{
   color:var(--text-primary);
-  font-family:PixelForge,sans-serif;
+  font-family:var(--font-body);
   font-weight:700;
   font-size:14px;
   letter-spacing:.5px;
 }
-.day-modal-title .dm-weak{font-weight:400;color:var(--text-tertiary);font-size:11px;margin-left:4px;letter-spacing:.5px;font-family:PixelMono,monospace}
+.day-modal-title .dm-weak{font-weight:400;color:var(--text-tertiary);font-size:11px;margin-left:4px;letter-spacing:.5px;font-family:var(--font-mono)}
 .day-modal-title .dm-badge{
   margin-left:6px;
   padding:1px 5px;
   background:var(--accent);color:#fff;
-  font-family:PixelMono,monospace;font-size:9px;letter-spacing:1px;
+  font-family:var(--font-mono);font-size:9px;letter-spacing:1px;
   border:1px solid var(--accent-strong);
 }
 .day-modal-close{
@@ -361,7 +361,7 @@
 }
 .dm-section:last-child{margin-bottom:0}
 .dm-section-title{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:9px;
   letter-spacing:1.5px;
   color:var(--accent-ink);
@@ -373,9 +373,9 @@
   padding-bottom:8px;margin-bottom:8px;
   border-bottom:2px dashed var(--border-light);
 }
-.dm-hero-label{font-size:12px;color:var(--text-secondary);font-family:PixelForge,sans-serif}
+.dm-hero-label{font-size:12px;color:var(--text-secondary);font-family:var(--font-body)}
 .dm-hero-value{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:22px;font-weight:700;
   color:var(--accent-ink);
   letter-spacing:.5px;
@@ -396,20 +396,20 @@
 }
 .dm-cell.is-strong .dm-cell-value{color:var(--accent-ink)}
 .dm-cell-value{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:13px;font-weight:700;
   color:var(--text-primary);
   letter-spacing:.3px;
 }
 .dm-cell-label{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:8px;
   color:var(--text-tertiary);
   letter-spacing:1px;
   margin-top:3px;
 }
 .dm-empty,.dm-pending-tip,.dm-est-note{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:10px;
   color:var(--text-tertiary);
   letter-spacing:.5px;
@@ -452,7 +452,7 @@
   display:inline-flex;align-items:center;justify-content:center;gap:5px;
   min-width:86px;
   border:none;background:transparent;cursor:pointer;
-  font-family:PixelForge,sans-serif;
+  font-family:var(--font-body);
   font-size:12px;font-weight:700;
   color:var(--text-secondary);
   padding:6px 14px;
@@ -477,7 +477,7 @@
 }
 .trend-tabs{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap}
 .trend-tab{
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:9px;letter-spacing:1px;
   padding:4px 10px;
   border:2px solid var(--border-light);
@@ -492,18 +492,18 @@
 .trend-chart{width:100%}
 .trend-svg{display:block;width:100%;height:auto}
 .trend-grid{stroke:var(--border-light);stroke-width:1}
-.trend-ylabel{fill:var(--text-tertiary);font-size:9px;text-anchor:end;font-family:PixelMono,monospace}
-.trend-xlabel{fill:var(--text-tertiary);font-size:9px;text-anchor:middle;font-family:PixelMono,monospace}
+.trend-ylabel{fill:var(--text-tertiary);font-size:9px;text-anchor:end;font-family:var(--font-mono)}
+.trend-xlabel{fill:var(--text-tertiary);font-size:9px;text-anchor:middle;font-family:var(--font-mono)}
 .trend-line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .trend-area{fill:var(--accent);opacity:.1}
 .trend-pt{fill:#fff;stroke:var(--accent);stroke-width:2}
 .trend-pt.is-est{stroke-dasharray:2 2}
 .trend-hit{fill:transparent;cursor:pointer}
-.trend-empty{padding:24px 0;text-align:center;color:var(--text-tertiary);font-family:PixelMono,monospace;font-size:10px;letter-spacing:1px}
+.trend-empty{padding:24px 0;text-align:center;color:var(--text-tertiary);font-family:var(--font-mono);font-size:10px;letter-spacing:1px}
 .trend-tip{
   position:absolute;transform:translate(-50%,-140%);
   background:var(--bg-card);color:var(--text-primary);
-  font-family:PixelMono,monospace;font-size:10px;letter-spacing:.3px;
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.3px;
   padding:5px 8px;
   border:2px solid var(--accent);
   box-shadow:3px 3px 0 var(--border-strong);
@@ -512,19 +512,19 @@
 }
 .trend-tip b{font-weight:700;color:var(--accent-ink);margin-right:4px}
 .trend-legend{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:8px}
-.trend-legend .lg-item{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary);font-family:PixelMono,monospace}
+.trend-legend .lg-item{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)}
 .trend-legend .lg-item i{width:12px;height:3px;display:inline-block}
 .trend-guide{stroke:var(--text-tertiary);stroke-width:1;stroke-dasharray:3 3;opacity:0;transition:opacity .12s;pointer-events:none}
 .trend-guide.on{opacity:.5}
 .trend-focus{opacity:0;transition:opacity .12s;pointer-events:none}
 .trend-focus.on{opacity:1}
-.trend-note{fill:var(--text-tertiary);font-size:8px;font-family:PixelMono,monospace}
+.trend-note{fill:var(--text-tertiary);font-size:8px;font-family:var(--font-mono)}
 
 /* ===== 环比色签 ===== */
 .mom-tag{
   display:inline-block;
   padding:1px 5px;
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:9px;
   letter-spacing:.5px;
   line-height:1.4;
@@ -542,7 +542,7 @@
   padding:28px 0;
   text-align:center;
   color:var(--text-tertiary);
-  font-family:PixelMono,monospace;
+  font-family:var(--font-mono);
   font-size:11px;
   letter-spacing:1px;
 }

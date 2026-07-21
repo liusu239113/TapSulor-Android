@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -15,21 +16,16 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.ByteArrayInputStream
+import java.util.concurrent.TimeUnit
 
 class MakerWebFragment : Fragment() {
 
     private lateinit var webView: WebView
     private lateinit var titleText: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
-
-    companion object {
-        // 使用真实 WebView UA(仅去掉 "; wv" 标识),避免被检测为 WebView。
-        // 不要伪装成桌面 Chrome 高版本,否则内嵌的游戏运行时(SCE/WASM/WebGL2)
-        // 会走"桌面新版 Chrome"路径,调用 Android WebView 实际不支持的 API,
-        // 导致弹出"浏览器不支持游戏所需运行环境"。
-        private const val MAKER_URL = "https://maker.taptap.cn/"
-        private const val REQUEST_FILE_CHOOSER = 2001
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -160,6 +156,17 @@ class MakerWebFragment : Fragment() {
                 cacheMode = WebSettings.LOAD_DEFAULT
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
+                // SharedArrayBuffer 是 SCE / UrhoX 游戏运行时(WASM 多线程)的硬性依赖。
+                // Android 14(API 34)及以上:直接通过 framework API 开启。
+                // 更低版本:通过 shouldInterceptRequest 给所有 maker.taptap.cn 响应
+                // 注入 Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy 头,
+                // 让页面处于 cross-origin isolated 状态以启用 SAB。
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    try {
+                        @SuppressLint("NewApi")
+                        setEnableSharedArrayBuffer(true)
+                    } catch (_: Exception) {}
+                }
             }
 
             webViewClient = object : WebViewClient() {
@@ -211,6 +218,25 @@ class MakerWebFragment : Fragment() {
                         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {}
                         true
                     }
+                }
+
+                // 为 maker.taptap.cn 的所有响应强制注入 COOP/COEP 头,
+                // 使得顶层文档 + 游戏 iframe 处于 cross-origin isolated 状态,
+                // 从而允许 SharedArrayBuffer(SCE / UrhoX WASM 多线程必需)。
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest
+                ): WebResourceResponse? {
+                    val host = request.url.host ?: ""
+                    val isMakerHost = host == "maker.taptap.cn" || host.endsWith(".maker.taptap.cn")
+                    // 游戏运行时 iframe 也可能托管在单独子域(如 *.game.taptap.cn / sce-cdn 等),
+                    // 为安全起见,对所有 taptap.cn 子域都注入头,避免 iframe 侧 SAB 失效。
+                    val isTapTapDomain = host == "taptap.cn" || host.endsWith(".taptap.cn")
+                    if (!isMakerHost && !isTapTapDomain) return null
+                    // 没有请求体的方法直接代理;其它(POST/PUT 等)回退系统默认,避免破坏业务请求
+                    val method = request.method?.uppercase() ?: "GET"
+                    if (method != "GET" && method != "HEAD") return null
+                    return fetchWithCoopCoep(request.url.toString(), method, request.requestHeaders)
                 }
             }
 
@@ -342,5 +368,80 @@ class MakerWebFragment : Fragment() {
     private fun dp(value: Int): Int {
         val density = resources.displayMetrics.density
         return (value * density + 0.5f).toInt()
+    }
+
+    companion object {
+        // 使用真实 WebView UA(仅去掉 "; wv" 标识),避免被检测为 WebView。
+        // 不要伪装成桌面 Chrome 高版本,否则内嵌的游戏运行时(SCE/WASM/WebGL2)
+        // 会走"桌面新版 Chrome"路径,调用 Android WebView 实际不支持的 API,
+        // 导致弹出"浏览器不支持游戏所需运行环境"。
+        private const val MAKER_URL = "https://maker.taptap.cn/"
+        private const val REQUEST_FILE_CHOOSER = 2001
+
+        // 代理 maker.taptap.cn 请求时复用的 OkHttpClient(长连接/线程池共享)
+        private val coopClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+        }
+    }
+
+    // 通过 OkHttp 代理请求并强制注入 COOP/COEP/CORP 响应头,
+    // 使顶层文档及 iframe 处于 cross-origin isolated 状态,启用 SharedArrayBuffer。
+    private fun fetchWithCoopCoep(
+        url: String,
+        method: String,
+        requestHeaders: Map<String, String>
+    ): WebResourceResponse? {
+        return try {
+            val reqBuilder = Request.Builder().url(url)
+            // 透传大部分请求头(跳掉 hop-by-hop 头以及已由 OkHttp 自动处理的)
+            val skipHeaders = setOf(
+                "host", "connection", "content-length", "transfer-encoding",
+                "accept-encoding", "proxy-connection", "keep-alive"
+            )
+            for ((k, v) in requestHeaders) {
+                if (k.lowercase() in skipHeaders) continue
+                reqBuilder.header(k, v)
+            }
+            // 显式带上 WebView CookieManager 里该 URL 的 cookie,保证登录态
+            val cookie = CookieManager.getInstance().getCookie(url)
+            if (!cookie.isNullOrEmpty()) reqBuilder.header("Cookie", cookie)
+
+            if (method == "HEAD") reqBuilder.head()
+            else reqBuilder.get()
+
+            coopClient.newCall(reqBuilder.build()).execute().use { resp ->
+                val body = resp.body
+                val bytes = body?.bytes() ?: ByteArray(0)
+                val contentType = resp.header("Content-Type") ?: "application/octet-stream"
+                val mime = contentType.substringBefore(';').trim()
+                val charset = contentType.substringAfter("charset=", "UTF-8").substringBefore(';').trim()
+
+                // 收集原始响应头,并强制注入 cross-origin isolation 头
+                val mergedHeaders = mutableMapOf<String, String>()
+                for ((k, v) in resp.headers) {
+                    // 重复头按多行合并
+                    mergedHeaders[k] = if (mergedHeaders.containsKey(k)) mergedHeaders[k] + ", " + v else v
+                }
+                // 顶层文档 + iframe: 开启跨源隔离 -> SharedArrayBuffer 可用
+                mergedHeaders["Cross-Origin-Opener-Policy"] = "same-origin"
+                mergedHeaders["Cross-Origin-Embedder-Policy"] = "require-corp"
+                // 允许这些响应被同源/跨源 iframe 作为子资源加载(配合 COEP:require-corp)
+                mergedHeaders["Cross-Origin-Resource-Policy"] = "cross-origin"
+
+                WebResourceResponse(mime, charset, ByteArrayInputStream(bytes)).apply {
+                    setStatusCodeAndReasonPhrase(resp.code, resp.message.ifEmpty { "OK" })
+                    responseHeaders = mergedHeaders
+                }
+            }
+        } catch (e: Exception) {
+            // 代理失败时回退系统默认加载逻辑(返回 null 让 WebView 自己去请求)
+            null
+        }
     }
 }
