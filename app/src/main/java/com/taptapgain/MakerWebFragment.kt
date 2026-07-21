@@ -15,8 +15,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayInputStream
@@ -158,14 +156,18 @@ class MakerWebFragment : Fragment() {
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
                 // SharedArrayBuffer 是 SCE / UrhoX 游戏运行时(WASM 多线程)的硬性依赖。
-                // 通过 AndroidX WebSettingsCompat 在支持的设备上直接开启(覆盖 API 34+ 原生
-                // 与部分低版本 WebView 实现);对不支持该 feature 的设备,再由下面
-                // shouldInterceptRequest 注入 COOP/COEP 头让页面 cross-origin isolated,
-                // 双管齐下确保 SAB 可用。
-                if (WebViewFeature.isFeatureSupported(WebViewFeature.ENABLE_SHARED_ARRAY_BUFFER)) {
-                    try {
-                        WebSettingsCompat.setEnableSharedArrayBuffer(this, true)
-                    } catch (_: Exception) {}
+                // 这里用反射调用 android.webkit.WebSettings.setEnableSharedArrayBuffer(boolean),
+                // 该方法在 API 34(Android 14)+ 新版 Chromium WebView 上可用;用反射避免不同
+                // compileSdk / AndroidX 版本下符号缺失导致的编译失败。对不支持该方法的设备或
+                // WebView,由下面 shouldInterceptRequest 注入 COOP/COEP 头让页面 cross-origin
+                // isolated,双管齐下确保 SAB 可用。
+                try {
+                    val m = android.webkit.WebSettings::class.java.getMethod(
+                        "setEnableSharedArrayBuffer", Boolean::class.javaPrimitiveType
+                    )
+                    m.invoke(this, true)
+                } catch (_: Throwable) {
+                    // 旧设备 / 旧 WebView 不支持该方法时静默跳过,走 COOP/COEP 头路径
                 }
             }
 
