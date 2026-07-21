@@ -222,16 +222,38 @@
   }
 
   // 统一 fetch（Electron 走主进程带 cookie，浏览器走原生 fetch）
+  // Android 上通过 okhttp，失败时 ok=false、status=0；HTTP 4xx/5xx 时 ok=false、status=对应码
   async function apiFetch(url) {
     if (isElectron) {
       const res = await window.electronAPI.fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status || 0}`);
       return JSON.parse(res.body);
     } else {
       // 浏览器预览（无 cookie，会失败）
       const res = await fetch(url, { credentials: 'include' });
       return await res.json();
     }
+  }
+
+  // 带重试的 fetch：只对瞬时错误（网络/0、HTTP 5xx、HTTP 429）重试，最多 retries 次，指数退避。
+  // HTTP 4xx（除 429）直接抛错，避免对鉴权/参数问题无意义重试。
+  async function apiFetchWithRetry(url, retries = 2) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await apiFetch(url);
+      } catch (e) {
+        lastErr = e;
+        const msg = (e && e.message) || '';
+        const statusMatch = msg.match(/^HTTP (\d+)/);
+        const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+        const isTransient = status === 0 || status === 429 || status >= 500;
+        if (!isTransient || attempt === retries) throw e;
+        const delay = 300 * Math.pow(2, attempt); // 300ms, 600ms
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    throw lastErr;
   }
 
   // ========== 登录态 ==========
@@ -375,7 +397,7 @@
 
   async function fetchGameRevenue(appId, startDate, endDate) {
     const url = `${REVENUE_URL}?developer_id=${DEVELOPER_ID}&app_id=${appId}&start_time=${startDate}&end_time=${endDate}`;
-    const json = await apiFetch(url);
+    const json = await apiFetchWithRetry(url);
     if (!json.success || !json.data) {
       throw new Error(json.data && json.data.msg || '收入接口返回失败');
     }
@@ -392,7 +414,7 @@
   // API: mini-app/v1/stats-by-day/device
   async function fetchGameDAU(appId, startDate, endDate) {
     const url = `${DAU_URL}?developer_id=${DEVELOPER_ID}&app_id=${appId}&start_date=${startDate}&end_date=${endDate}`;
-    const json = await apiFetch(url);
+    const json = await apiFetchWithRetry(url);
     if (!json.success || !json.data || !json.data.list) {
       throw new Error('DAU 接口返回失败');
     }
@@ -408,7 +430,7 @@
   // 一次请求拿多天数据，供环比/预估复用，避免逐日单拉
   async function fetchGameDAURange(appId, startDate, endDate) {
     const url = `${DAU_URL}?developer_id=${DEVELOPER_ID}&app_id=${appId}&start_date=${startDate}&end_date=${endDate}`;
-    const json = await apiFetch(url);
+    const json = await apiFetchWithRetry(url);
     if (!json.success || !json.data || !json.data.list) {
       throw new Error('DAU 接口返回失败');
     }
@@ -425,7 +447,7 @@
   // 拉取曝光/点击/转化漏斗数据（position/cn 接口）
   async function fetchGamePositionRange(appId, startDate, endDate) {
     const url = `${POSITION_URL}?developer_id=${DEVELOPER_ID}&app_id=${appId}&start_date=${startDate}&end_date=${endDate}&platform=android`;
-    const json = await apiFetch(url).catch(() => null);
+    const json = await apiFetchWithRetry(url).catch(() => null);
     const map = {};
     if (json && json.success && json.data && json.data.list) {
       json.data.list.forEach(i => {
@@ -461,8 +483,14 @@
     });
     renderAll();
 
-    // 每个游戏 7 个独立请求并发，预估等本月收入完成后算
-    const promises = publishedGames.map(async (g) => {
+    // 每个游戏 7 个独立请求并发，预估等本月收入完成后算。
+    // 为避免冷启动/后台恢复后一次发几十个请求被 TapTap 限流或超时，
+    // 用并发上限（最多 MAX_CONCURRENCY 个游戏同时在飞）分块跑，跑完一轮后再对
+    // 仍然缺关键字段（今日/本月/累计收入）的游戏补刷一轮。
+    const MAX_CONCURRENCY = 4;
+
+    // 单游戏拉取逻辑（复用为首轮和补刷轮）
+    async function fetchOneGame(g) {
       const appId = g.appId;
 
       // 1) 近2天收入区间（拿昨天 + 前天）
@@ -562,9 +590,43 @@
 
       // 等全部完成
       await Promise.all([p1, p2, p3, p4, p5, p6, p7]);
-    });
+    }
 
-    await Promise.all(promises);
+    // 并发受限的批次运行器：每次最多 MAX_CONCURRENCY 个游戏在飞
+    async function runBatch(games) {
+      for (let i = 0; i < games.length; i += MAX_CONCURRENCY) {
+        const chunk = games.slice(i, i + MAX_CONCURRENCY);
+        await Promise.all(chunk.map(g => fetchOneGame(g).catch(err => {
+          console.warn(`[${g.name}] 批次拉取异常:`, err && err.message);
+        })));
+      }
+    }
+
+    console.log(`[sync] 首轮开始: ${publishedGames.length} 个项目, 并发上限 ${MAX_CONCURRENCY}`);
+    await runBatch(publishedGames);
+
+    // 补刷轮：找出关键字段仍为空的游戏再跑一轮（最多补刷 1 次，避免无限重试）
+    const missing = publishedGames.filter(g =>
+      g.todayRevenue == null || g.monthRevenue == null || g.totalRevenue == null
+    );
+    if (missing.length > 0) {
+      console.log(`[sync] 补刷轮: ${missing.length}/${publishedGames.length} 个项目仍缺数据, 重新拉取`);
+      // 补刷前重置这几个游戏的 loading 标志，便于 UI 反馈
+      missing.forEach(g => {
+        if (g.todayRevenue == null) g.todayLoading = true;
+        if (g.monthRevenue == null) g.monthLoading = true;
+        if (g.totalRevenue == null) g.totalLoading = true;
+      });
+      renderAll();
+      await runBatch(missing);
+      const stillMissing = publishedGames.filter(g =>
+        g.todayRevenue == null || g.monthRevenue == null || g.totalRevenue == null
+      );
+      console.log(`[sync] 补刷完成, 仍缺数据: ${stillMissing.length}/${publishedGames.length}`);
+    } else {
+      console.log(`[sync] 首轮全部 ${publishedGames.length} 个项目同步完成`);
+    }
+
     loadingRevenue = false;
   }
 
@@ -1462,7 +1524,8 @@
     if (checkUpdateBtn) {
       checkUpdateBtn.addEventListener('click', () => {
         playSfx('click');
-        if (isElectron && window.electronAPI && window.electronAPI.checkUpdate) {
+        // Android 上 android-bridge.js 已把原生桥接包装成 window.electronAPI.checkUpdate
+        if (window.electronAPI && window.electronAPI.checkUpdate) {
           window.electronAPI.checkUpdate();
         } else {
           showToast('当前环境不支持检查更新');
