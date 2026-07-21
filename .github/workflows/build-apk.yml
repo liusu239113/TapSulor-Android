@@ -21,11 +21,19 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
+          validate-wrappers: false
+          cache-disabled: true
 
       - name: Build APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: gradle assembleRelease --no-daemon
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          GRADLE_OPTS: "-Djava.net.preferIPv4Stack=true"
+          JAVA_OPTS: "-Djava.net.preferIPv4Stack=true"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
