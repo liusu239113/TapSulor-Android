@@ -24,6 +24,12 @@ class BackendWebViewActivity : AppCompatActivity() {
     private var appName: String = ""
     private var appId: String = ""
 
+    private data class ThemedViews(
+        val backBtn: TextView, val titleText: TextView,
+        val refreshBtn: TextView, val closeBtn: TextView
+    )
+    private var themedViews: ThemedViews? = null
+
     companion object {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -219,7 +225,7 @@ class BackendWebViewActivity : AppCompatActivity() {
         setContentView(root)
 
         // 顶部栏样式:返回/刷新按钮=强调色,标题=主文本色,关闭=危险红;全部跟随字体偏好
-        applyNativeTheme()
+        applyNativeTheme(backBtn, titleText, refreshBtn, closeBtn)
 
         // Load the game backend page after restoring cookies
         val accountManager = AccountManager(this)
@@ -260,15 +266,22 @@ class BackendWebViewActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         // 从设置页/其他页面返回时重新应用主题字体/强调色(用户可能刚切换过)
-        applyNativeTheme()
+        themedViews?.let { v ->
+            FontHelper.applyTopBarStyle(this, v.backBtn, v.refreshBtn)
+            FontHelper.applyFont(this, v.titleText, v.closeBtn)
+        }
     }
 
     /** 把 web 端同步过来的字体偏好/强调色应用到顶部栏所有 TextView */
-    private fun applyNativeTheme() {
+    private fun applyNativeTheme(
+        backBtn: TextView, titleText: TextView,
+        refreshBtn: TextView, closeBtn: TextView
+    ) {
         // 返回/刷新按钮使用强调色 + 自定义字体
         FontHelper.applyTopBarStyle(this, backBtn, refreshBtn)
         // 标题/关闭按钮保持原配色(text_primary / color_error),仅应用字体
         FontHelper.applyFont(this, titleText, closeBtn)
+        themedViews = ThemedViews(backBtn, titleText, refreshBtn, closeBtn)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
