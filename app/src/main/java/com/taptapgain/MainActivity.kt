@@ -2,6 +2,7 @@ package com.taptapgain
 
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +11,7 @@ import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
@@ -33,7 +35,6 @@ class MainActivity : AppCompatActivity() {
     private var bottomNavShown = false
 
     // Fragment 缓存（避免每次切换都重建 WebView）
-    private var makerFragment: MakerWebFragment? = null
     private var communityFragment: CommunityFragment? = null
     // 防止 setOnItemSelectedListener 与 switchToTab 互相递归
     private var isSwitchingTab = false
@@ -163,24 +164,28 @@ class MainActivity : AppCompatActivity() {
     private fun switchToTabInternal(tabId: Int) {
         if (tabId == currentTabId) return
 
+        // "制造" tab：直接用 Chrome Custom Tabs 打开 maker.taptap.cn。
+        // 原因：Android WebView 缺少站点隔离（site isolation），即使加上 COOP/COEP 头和
+        // setEnableSharedArrayBuffer 反射调用，crossOriginIsolated 始终为 false，
+        // SCE/UrhoX WASM 多线程游戏运行时无法启动。Custom Tabs 使用设备上 Chrome 的
+        // 完整渲染引擎，和 Chrome 浏览器完全一致，SAB/WebGL2/WASM 多线程全部可用。
+        // 这不是跳外部浏览器——Custom Tabs 在 app 内打开，toolbar 颜色跟随 app 主题。
+        if (tabId == R.id.nav_maker) {
+            openMakerInCustomTabs()
+            // 保持当前 tab 选中态（Custom Tabs 覆盖全屏，不改变 app 内 tab 状态）
+            isSwitchingTab = true
+            bottomNav.selectedItemId = currentTabId
+            isSwitchingTab = false
+            return
+        }
+
         val ft = supportFragmentManager.beginTransaction()
         // 隐藏所有 Fragment
-        listOfNotNull(makerFragment, communityFragment).forEach { ft.hide(it) }
+        listOfNotNull(communityFragment).forEach { ft.hide(it) }
 
         when (tabId) {
             R.id.nav_home -> {
                 webView.visibility = View.VISIBLE
-            }
-            R.id.nav_maker -> {
-                webView.visibility = View.GONE
-                val existing = makerFragment
-                if (existing == null) {
-                    val f = MakerWebFragment()
-                    makerFragment = f
-                    ft.add(R.id.tab_container, f, "maker")
-                } else {
-                    ft.show(existing)
-                }
             }
             R.id.nav_community -> {
                 webView.visibility = View.GONE
@@ -196,6 +201,22 @@ class MainActivity : AppCompatActivity() {
         }
         currentTabId = tabId
         ft.commitAllowingStateLoss()
+    }
+
+    /** 用 Chrome Custom Tabs 打开 TapTap 制造（完整 Chrome 引擎，SAB/多线程/WebGL2 全部可用）。 */
+    private fun openMakerInCustomTabs() {
+        try {
+            val builder = CustomTabsIntent.Builder()
+                .setToolbarColor(ContextCompat.getColor(this, R.color.color_primary))
+                .setShowTitle(true)
+            val customTabsIntent = builder.build()
+            customTabsIntent.launchUrl(this, Uri.parse("https://maker.taptap.cn/"))
+        } catch (e: Exception) {
+            // 设备没有支持 Custom Tabs 的浏览器，回退到系统浏览器
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://maker.taptap.cn/")))
+            } catch (_: Exception) {}
+        }
     }
 
     @Deprecated("Use registerForActivityResult")
@@ -219,21 +240,9 @@ class MainActivity : AppCompatActivity() {
             }, 500)
             return
         }
-        // 转发给 MakerWebFragment 的文件选择
-        makerFragment?.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onBackPressed() {
-        // 当前在制造 Tab：先让 maker WebView 后退，不能后退则回主页
-        if (currentTabId == R.id.nav_maker) {
-            val maker = makerFragment
-            if (maker != null && maker.canGoBack()) {
-                maker.goBack()
-                return
-            }
-            switchToTab(R.id.nav_home)
-            return
-        }
         // 非主页 Tab：直接回主页
         if (currentTabId != R.id.nav_home) {
             switchToTab(R.id.nav_home)
@@ -270,7 +279,6 @@ class MainActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(backgroundRefreshRunnable)
         updateChecker.destroy()
         webAppInterface.destroy()
-        makerFragment?.destroyWebView()
         webView.destroy()
         super.onDestroy()
     }
