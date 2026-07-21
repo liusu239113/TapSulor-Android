@@ -1,90 +1,79 @@
 package com.taptapgain
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.Fragment
 
-class BackendWebViewActivity : AppCompatActivity() {
+class MakerWebFragment : Fragment() {
 
     private lateinit var webView: WebView
     private lateinit var titleText: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
-    private var appName: String = ""
-    private var appId: String = ""
 
     companion object {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        const val EXTRA_APP_ID = "extra_app_id"
-        const val EXTRA_APP_NAME = "extra_app_name"
-        private const val REQUEST_FILE_CHOOSER = 1001
-
-        fun start(activity: Activity, appId: String, appName: String) {
-            val intent = Intent(activity, BackendWebViewActivity::class.java)
-            intent.putExtra(EXTRA_APP_ID, appId)
-            intent.putExtra(EXTRA_APP_NAME, appName)
-            activity.startActivity(intent)
-        }
+        private const val MAKER_URL = "https://maker.taptap.cn/"
+        private const val REQUEST_FILE_CHOOSER = 2001
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableImmersiveMode()
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val ctx = requireContext()
+        val act = requireActivity()
 
-        appId = intent.getStringExtra(EXTRA_APP_ID) ?: ""
-        appName = intent.getStringExtra(EXTRA_APP_NAME) ?: "开发者后台"
-
-        // Build layout: top bar + WebView
-        val root = LinearLayout(this).apply {
+        val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(ContextCompat.getColor(this@BackendWebViewActivity, R.color.bg_page))
+            setBackgroundColor(ContextCompat.getColor(ctx, R.color.bg_page))
         }
 
         // Top bar
-        val topBar = LinearLayout(this).apply {
+        val topBar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            setBackgroundColor(ContextCompat.getColor(this@BackendWebViewActivity, R.color.bg_top_bar))
+            setBackgroundColor(ContextCompat.getColor(ctx, R.color.bg_top_bar))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(48)
             )
         }
 
-        val backBtn = TextView(this).apply {
+        val backBtn = TextView(ctx).apply {
             text = "←"
-            setTextColor(ContextCompat.getColor(this@BackendWebViewActivity, R.color.color_primary))
+            setTextColor(ContextCompat.getColor(ctx, R.color.color_primary))
             textSize = 22f
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
-            setPadding(0, 0, 0, 0)
             contentDescription = "返回"
             isClickable = true
             setOnClickListener {
-                if (webView.canGoBack()) webView.goBack() else finish()
+                if (webView.canGoBack()) webView.goBack()
             }
         }
 
-        titleText = TextView(this).apply {
-            text = appName
-            setTextColor(ContextCompat.getColor(this@BackendWebViewActivity, R.color.text_primary))
+        titleText = TextView(ctx).apply {
+            text = "Tap制造"
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
             textSize = 16f
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
@@ -94,24 +83,38 @@ class BackendWebViewActivity : AppCompatActivity() {
             maxLines = 1
         }
 
-        val closeBtn = TextView(this).apply {
+        val refreshBtn = TextView(ctx).apply {
+            text = "⟳"
+            setTextColor(ContextCompat.getColor(ctx, R.color.color_primary))
+            textSize = 22f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
+            contentDescription = "刷新"
+            isClickable = true
+            setOnClickListener { webView.reload() }
+        }
+
+        val closeBtn = TextView(ctx).apply {
             text = "✕"
-            setTextColor(ContextCompat.getColor(this@BackendWebViewActivity, R.color.color_error))
+            setTextColor(ContextCompat.getColor(ctx, R.color.color_error))
             textSize = 18f
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
-            setPadding(0, 0, 0, 0)
             contentDescription = "关闭"
             isClickable = true
-            setOnClickListener { finish() }
+            setOnClickListener {
+                // Switch back to home tab
+                (act as? MainActivity)?.switchToTab(R.id.nav_home)
+            }
         }
 
         topBar.addView(backBtn)
         topBar.addView(titleText)
+        topBar.addView(refreshBtn)
         topBar.addView(closeBtn)
 
         // WebView container
-        val webContainer = FrameLayout(this).apply {
+        val webContainer = FrameLayout(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -119,7 +122,7 @@ class BackendWebViewActivity : AppCompatActivity() {
             )
         }
 
-        webView = WebView(this).apply webView@{
+        webView = WebView(ctx).apply webView@{
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -153,14 +156,12 @@ class BackendWebViewActivity : AppCompatActivity() {
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
-                    // Stay within developer.taptap.cn
-                    return if (url.startsWith("https://developer.taptap.cn") || url.startsWith("https://www.taptap.cn")) {
-                        false // Let WebView handle it
+                    return if (url.startsWith("https://maker.taptap.cn") ||
+                               url.startsWith("https://developer.taptap.cn") ||
+                               url.startsWith("https://www.taptap.cn")) {
+                        false
                     } else {
-                        // Open external links in browser
-                        try {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        } catch (_: Exception) {}
+                        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {}
                         true
                     }
                 }
@@ -169,21 +170,20 @@ class BackendWebViewActivity : AppCompatActivity() {
             webChromeClient = object : WebChromeClient() {
                 override fun onReceivedTitle(view: WebView?, title: String?) {
                     super.onReceivedTitle(view, title)
-                    if (!title.isNullOrEmpty() && !title.contains("TapTap", ignoreCase = true)) {
+                    if (!title.isNullOrEmpty() && title.length <= 20) {
                         titleText.text = title
                     } else {
-                        titleText.text = appName
+                        titleText.text = "Tap制造"
                     }
                 }
 
-                // File chooser for APK/image uploads
                 override fun onShowFileChooser(
                     webView: WebView?,
                     filePathCallback: ValueCallback<Array<Uri>>?,
                     fileChooserParams: FileChooserParams?
                 ): Boolean {
-                    this@BackendWebViewActivity.filePathCallback?.onReceiveValue(null)
-                    this@BackendWebViewActivity.filePathCallback = filePathCallback
+                    this@MakerWebFragment.filePathCallback?.onReceiveValue(null)
+                    this@MakerWebFragment.filePathCallback = filePathCallback
                     val intent = Intent(Intent.ACTION_GET_CONTENT)
                     intent.addCategory(Intent.CATEGORY_OPENABLE)
                     intent.type = "*/*"
@@ -193,7 +193,7 @@ class BackendWebViewActivity : AppCompatActivity() {
                             REQUEST_FILE_CHOOSER
                         )
                     } catch (e: Exception) {
-                        this@BackendWebViewActivity.filePathCallback = null
+                        this@MakerWebFragment.filePathCallback = null
                         return false
                     }
                     return true
@@ -204,28 +204,21 @@ class BackendWebViewActivity : AppCompatActivity() {
         webContainer.addView(webView)
         root.addView(topBar)
         root.addView(webContainer)
-        setContentView(root)
 
-        // Load the game backend page after restoring cookies
-        val accountManager = AccountManager(this)
-        val devId = accountManager.getDeveloperId()
+        // Restore cookies and load maker page
+        val accountManager = AccountManager(ctx)
         accountManager.restoreCurrentCookies {
-            val url = if (devId != null && appId.isNotEmpty()) {
-                "https://developer.taptap.cn/v3/$devId/app/$appId"
-            } else if (devId != null) {
-                "https://developer.taptap.cn/v3/$devId/all-app"
-            } else {
-                "https://developer.taptap.cn/"
-            }
-            runOnUiThread { webView.loadUrl(url) }
+            act.runOnUiThread { webView.loadUrl(MAKER_URL) }
         }
+
+        return root
     }
 
     @SuppressLint("NewApi")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_FILE_CHOOSER) {
-            val results = if (resultCode == RESULT_OK && data != null) {
+            val results = if (resultCode == android.app.Activity.RESULT_OK && data != null) {
                 val uri = data.data
                 if (uri != null) arrayOf(uri) else null
             } else null
@@ -234,24 +227,9 @@ class BackendWebViewActivity : AppCompatActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) enableImmersiveMode()
-    }
-
-    override fun onDestroy() {
-        filePathCallback?.onReceiveValue(null)
-        webView.destroy()
-        super.onDestroy()
-    }
+    fun canGoBack(): Boolean = ::webView.isInitialized && webView.canGoBack()
+    fun goBack() { if (::webView.isInitialized) webView.goBack() }
+    fun destroyWebView() { if (::webView.isInitialized) webView.destroy() }
 
     private fun dp(value: Int): Int {
         val density = resources.displayMetrics.density

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间模式颜色 -->
+    <color name="bg_page">#141820</color>
+    <color name="bg_top_bar">#1A2030</color>
+    <color name="bg_bottom_nav">#000000</color>
+    <color name="bg_divider">#1A2030</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B0B0B0</color>
+    <color name="nav_unselected">#80FFFFFF</color>
+</resources>

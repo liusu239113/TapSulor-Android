@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色（青色，日夜间一致） -->
+    <color name="color_primary">#00C4CD</color>
+    <color name="color_primary_dark">#00A8B0</color>
+
+    <!-- 错误/关闭按钮色（红色） -->
+    <color name="color_error">#FF6B6B</color>
+
+    <!-- 日间模式颜色 -->
+    <color name="bg_page">#F5F6F8</color>
+    <color name="bg_top_bar">#FFFFFF</color>
+    <color name="bg_bottom_nav">#FFFFFF</color>
+    <color name="bg_divider">#E0E2E8</color>
+    <color name="text_primary">#1A1A1A</color>
+    <color name="text_secondary">#666666</color>
+    <color name="nav_unselected">#801A1A1A</color>
+</resources>
