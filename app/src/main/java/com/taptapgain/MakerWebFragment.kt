@@ -1,6 +1,7 @@
 package com.taptapgain
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -28,26 +29,21 @@ import org.mozilla.geckoview.GeckoSessionSettings
  * 为什么不用系统 WebView:
  *  - Android WebView 缺少站点隔离(site isolation/Fission),即使 COOP/COEP 头正确、
  *    反射调用 setEnableSharedArrayBuffer(true),window.crossOriginIsolated 仍为 false,
- *    SharedArrayBuffer 不可用 → SCE/UrhoX WASM 多线程游戏无法启动,弹出"不支持"覆盖层。
+ *    SharedArrayBuffer 不可用 → SCE/UrhoX WASM 多线程游戏无法启动。
  *
- * 为什么不用 Chrome Custom Tabs:
- *  - Custom Tabs 以独立 Activity 运行,即使 Chrome 包名被强制,在小米等设备上仍会
- *    离开当前 App 任务栈,用户感知为"跳出到浏览器",不符合产品要求。
+ * GeckoView 是 Mozilla 官方提供的可嵌入 Android View,内置 Firefox 完整渲染引擎,
+ * 默认开启站点隔离(Fission),原生支持 SharedArrayBuffer 和 WASM 多线程,完全在 App
+ * 进程内渲染,无任何外部 Activity 跳转。
  *
- * GeckoView 是 Mozilla 官方提供的可嵌入 Android View(就像 WebView 一样嵌在布局里),
- * 但内置 Firefox 完整渲染引擎,默认开启站点隔离(Fission),原生支持 SharedArrayBuffer
- * 和 WASM 多线程,完全在 App 进程内渲染,无任何外部 Activity 跳转。
+ * 黑屏恢复策略:
+ *  - Gecko 内容进程在后台被系统杀掉时会回调 onKill/onCrash。此时 session 已无法 reload,
+ *    我们只是标记 needsRebuild=true,下次进入 Tab(onHiddenChanged(false)/onResume)或
+ *    用户点刷新按钮时执行完整的 session 重建(new GeckoSession → open → setSession → loadUri)。
  *
- * 注意:GeckoView 153 的公开 API 与旧版文档/博客差异较大:
- *  - 没有 session.load(String),用 loadUri(String) 或 load(Loader().uri(...))
- *  - 没有 evaluateJS / isDebugMode / PromptResponse.DISMISS / FileCallback
- *  - onLocationChange 签名是 (session, url, List, Boolean);多参数用于子框架导航事件
- *  - onNewSession 返回 GeckoResult<GeckoSession>;想把弹窗留在当前 session,直接 loadUri
- *    并返回 GeckoResult.deny() 阻止 GeckoView 新建窗口
- *  - onFilePrompt 拿到 FilePrompt 后,其 confirm(Context, Uri[])/dismiss() 直接返回
- *    PromptResponse,再由 GeckoResult<PromptResponse> 发回引擎
- *  - StorageController 不暴露 cookieStore;本版本先跳过敏捷 Cookie 同步,用户首次进入
- *    需要在 GeckoView 内重新登录一次(Cookie 存储是持久的,后续重启 App 自动复用)。
+ * 登录对齐(与 BackendWebViewActivity 行为一致):
+ *  - UA 覆盖成 Chrome Android(不带 "; wv" 标记),让 TapTap 登录页给出完整面板(含扫码)。
+ *  - 非 http(s) 链接(mqqapi://、mqqwpa://、weixin://、intent:// 等)通过 Intent.ACTION_VIEW
+ *    交给系统处理,由系统拉起 QQ/微信等原生 App。
  */
 class MakerWebFragment : Fragment() {
 
@@ -58,12 +54,15 @@ class MakerWebFragment : Fragment() {
     private var refreshBtn: TextView? = null
     private var closeBtn: TextView? = null
 
-    // 跟踪回退栈状态(由 NavigationDelegate.onCanGoBack 回调驱动)
+    // 跟踪回退栈状态
     private var canGoBackState: Boolean = false
-    // 当前 URL(由 onLocationChange 回调记录,用于日志)
     private var currentUrl: String? = null
+    // Gecko 内容进程被系统杀掉标记 —— 下次 onResume/显示时重建 session
+    private var needsRebuild: Boolean = false
+    // 正在重建中,防重入
+    private var rebuilding: Boolean = false
 
-    // 文件选择:先暂存 Prompt 对象和异步 GeckoResult,在 onActivityResult 中完成
+    // 文件选择
     private var activeFilePrompt: GeckoSession.PromptDelegate.FilePrompt? = null
     private var activeFilePromptResult: GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? = null
 
@@ -84,7 +83,7 @@ class MakerWebFragment : Fragment() {
             setBackgroundColor(ContextCompat.getColor(ctx, R.color.bg_page))
         }
 
-        // === Top bar (与原来 WebView 版本一致) ===
+        // === Top bar ===
         val topBar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -104,11 +103,9 @@ class MakerWebFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
             contentDescription = "返回"
             isClickable = true
-            isEnabled = false // 初始不可用,等有历史记录再启用
+            isEnabled = false
             alpha = 0.4f
-            setOnClickListener {
-                geckoSession?.goBack()
-            }
+            setOnClickListener { geckoSession?.goBack() }
         }
 
         titleText = TextView(ctx).apply {
@@ -131,9 +128,7 @@ class MakerWebFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
             contentDescription = "刷新"
             isClickable = true
-            setOnClickListener {
-                geckoSession?.reload()
-            }
+            setOnClickListener { hardReload() }
         }
 
         closeBtn = TextView(ctx).apply {
@@ -165,16 +160,6 @@ class MakerWebFragment : Fragment() {
 
         val runtime = getRuntime(ctx)
 
-        // 创建 GeckoSession(类似 WebView 的浏览状态)
-        val session = GeckoSession(
-            GeckoSessionSettings.Builder()
-                .usePrivateMode(false)
-                .allowJavascript(true)
-                .build()
-        )
-        geckoSession = session
-
-        // 创建 GeckoView View 组件(替换 WebView)
         val gv = GeckoView(ctx).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -183,12 +168,46 @@ class MakerWebFragment : Fragment() {
         }
         geckoView = gv
 
-        // 打开 session 并绑定到 GeckoView
+        // 创建并打开初始 session
+        val session = createAndOpenSession(runtime, gv)
+        geckoSession = session
+
+        webContainer.addView(gv)
+        root.addView(topBar)
+        root.addView(webContainer)
+
+        applyNativeTheme(ctx, backBtn!!, titleText, refreshBtn!!, closeBtn!!)
+
+        // 首次加载
+        Log.d(TAG, "Loading maker URL: $MAKER_URL")
+        session.loadUri(MAKER_URL)
+
+        return root
+    }
+
+    /**
+     * 创建一个新的 GeckoSession、打开并绑定到 gv,同时挂好所有 delegate。
+     * 调用者负责把返回的 session 赋值给 geckoSession。
+     */
+    private fun createAndOpenSession(runtime: GeckoRuntime, gv: GeckoView): GeckoSession {
+        val session = GeckoSession(
+            GeckoSessionSettings.Builder()
+                .usePrivateMode(false)
+                .allowJavascript(true)
+                // 伪装成 Chrome Android,与 BackendWebViewActivity 的 UA 保持一致:
+                // 让 TapTap 登录页给出完整面板(含扫码登录、原生 App 拉起)。
+                .userAgentOverride(CHROME_UA)
+                .build()
+        )
+        attachDelegates(session)
         session.open(runtime)
         gv.setSession(session)
+        return session
+    }
 
-        // === 导航代理(替代 WebViewClient) ===
-        // 注意 onLocationChange 在 GeckoView 153 中是 4 个参数,后两个用于子框架导航
+    /** 给 session 绑定所有 delegate(集中在此,便于重建时复用)。 */
+    private fun attachDelegates(session: GeckoSession) {
+        // === 导航代理 ===
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(
                 session: GeckoSession,
@@ -200,10 +219,7 @@ class MakerWebFragment : Fragment() {
                 Log.d(TAG, "onLocationChange: $url (hasUserGesture=$hasUserGesture)")
             }
 
-            override fun onCanGoBack(
-                session: GeckoSession,
-                canGoBack: Boolean
-            ) {
+            override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
                 canGoBackState = canGoBack
                 activity?.runOnUiThread {
                     backBtn?.isEnabled = canGoBack
@@ -211,32 +227,33 @@ class MakerWebFragment : Fragment() {
                 }
             }
 
-            override fun onCanGoForward(
-                session: GeckoSession,
-                canGoForward: Boolean
-            ) {}
+            override fun onCanGoForward(session: GeckoSession, canGoForward: Boolean) {}
 
             override fun onLoadRequest(
                 session: GeckoSession,
                 request: GeckoSession.NavigationDelegate.LoadRequest
             ): GeckoResult<AllowOrDeny>? {
                 val url = request.uri
-                val host = try {
-                    Uri.parse(url).host ?: ""
-                } catch (_: Exception) { "" }
 
-                // 所有 taptap.cn 子域留在 GeckoView 内加载(含登录 accounts/i/www 等)
+                // 非 http(s) 协议(mqqapi://、mqqwpa://、weixin://、intent:// 等)
+                // 交给系统 Intent 处理,由系统拉起原生 App。
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    Log.d(TAG, "Non-http(s) scheme, dispatching via Intent: $url")
+                    dispatchExternalIntent(url)
+                    return GeckoResult.deny()
+                }
+
+                val host = try { Uri.parse(url).host ?: "" } catch (_: Exception) { "" }
+
+                // 所有 taptap.cn 子域留在 GeckoView 内
                 val isTapTap = host == "taptap.cn" || host.endsWith(".taptap.cn")
 
                 return if (isTapTap) {
                     Log.d(TAG, "Loading in GeckoView: $url")
                     GeckoResult.allow()
                 } else {
-                    // 外部链接用系统浏览器打开,不离开 App 内的制造页面
-                    Log.d(TAG, "External link, opening in browser: $url")
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    } catch (_: Exception) {}
+                    Log.d(TAG, "External http(s) link, opening in browser: $url")
+                    dispatchExternalIntent(url)
                     GeckoResult.deny()
                 }
             }
@@ -245,11 +262,8 @@ class MakerWebFragment : Fragment() {
                 newSession: GeckoSession,
                 uri: String
             ): GeckoResult<GeckoSession>? {
-                // window.open() 弹出的新窗口(登录授权等)在当前主 session 内加载,
-                // 并返回 null 告诉 GeckoView 走默认处理(即不新建 GeckoSession)。
-                // GeckoResult.deny() 返回 GeckoResult<AllowOrDeny>,无法直接赋给
-                // GeckoResult<GeckoSession>;而 NavigationDelegate.onNewSession 的契约
-                // 里,返回 null 即代表"不处理新窗口",引擎会丢弃 newSession。
+                // window.open() 弹窗:把 URL 回灌到当前主 session 加载,
+                // 返回 null 让引擎丢掉 newSession。
                 Log.d(TAG, "onNewSession (popup), loading in current session: $uri")
                 geckoSession?.loadUri(uri)
                 return null
@@ -261,11 +275,11 @@ class MakerWebFragment : Fragment() {
                 error: org.mozilla.geckoview.WebRequestError
             ): GeckoResult<String>? {
                 Log.w(TAG, "onLoadError: $url error=$error")
-                return null // 让 GeckoView 走默认错误页
+                return null
             }
         }
 
-        // === 内容代理(替代 WebChromeClient 的标题/全屏/crash 等) ===
+        // === 内容代理 ===
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onTitleChange(session: GeckoSession, title: String?) {
                 if (!title.isNullOrEmpty() && title.length <= 20) {
@@ -284,13 +298,17 @@ class MakerWebFragment : Fragment() {
             }
 
             override fun onCrash(session: GeckoSession) {
-                Log.e(TAG, "GeckoView CRASH — reloading")
-                session.reload()
+                Log.e(TAG, "GeckoView CRASH — marking for rebuild")
+                needsRebuild = true
+                updateTitleForState()
             }
 
             override fun onKill(session: GeckoSession) {
-                Log.e(TAG, "GeckoView KILLED by system — reloading")
-                session.reload()
+                // 内容进程被系统杀掉,此时 session 已无法 reload。仅标记,
+                // 等下次显示/用户刷新时再真正重建。
+                Log.e(TAG, "GeckoView KILLED by system — marking for rebuild")
+                needsRebuild = true
+                updateTitleForState()
             }
         }
 
@@ -302,19 +320,13 @@ class MakerWebFragment : Fragment() {
 
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 Log.i(TAG, "onPageStop success=$success url=${currentUrl ?: "?"}")
-                if (success) {
-                    titleText.text = "Tap制造"
-                } else {
-                    titleText.text = "加载失败"
+                if (needsRebuild) {
+                    needsRebuild = false
                 }
+                updateTitleForState()
             }
 
-            override fun onProgressChange(session: GeckoSession, progress: Int) {
-                // 可在此加进度条;目前仅打日志
-                if (progress in 1..99) {
-                    Log.v(TAG, "progress: $progress%")
-                }
-            }
+            override fun onProgressChange(session: GeckoSession, progress: Int) {}
 
             override fun onSecurityChange(
                 session: GeckoSession,
@@ -327,24 +339,18 @@ class MakerWebFragment : Fragment() {
             ) {}
         }
 
-        // === Prompt 代理(处理文件选择器/JS alert/confirm) ===
-        // GeckoView 153 的 FilePrompt 不再暴露 callback 字段;我们把 Prompt 对象和
-        // GeckoResult 暂存,在 onActivityResult 里通过 prompt.confirm/dismiss 拿到
-        // PromptResponse 后,complete 到返回的 GeckoResult 中。
+        // === Prompt 代理(文件选择) ===
         session.promptDelegate = object : GeckoSession.PromptDelegate {
             override fun onFilePrompt(
                 session: GeckoSession,
                 prompt: GeckoSession.PromptDelegate.FilePrompt
             ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
-                // 释放上一次未处理的 prompt(防止泄漏)
                 activeFilePrompt?.dismiss()
                 activeFilePrompt = prompt
 
                 val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
                 activeFilePromptResult = result
 
-                // prompt.mimeTypes 是跨模块 public API 属性,Kotlin 不允许智能类型转换;
-                // 先拷贝到本地 val 再判断
                 val mimeTypes = prompt.mimeTypes
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -363,7 +369,6 @@ class MakerWebFragment : Fragment() {
                         Intent.createChooser(intent, "选择文件"),
                         REQUEST_FILE_CHOOSER
                     )
-                    // 返回 GeckoResult,稍后在 onActivityResult 中 complete
                     result
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to start file chooser", e)
@@ -372,28 +377,95 @@ class MakerWebFragment : Fragment() {
                     GeckoResult.fromValue(prompt.dismiss())
                 }
             }
+        }
+    }
 
-            // 其余弹窗(alert/confirm/text/auth 等)走默认处理即可
+    private fun updateTitleForState() {
+        val act = activity ?: return
+        act.runOnUiThread {
+            titleText.text = if (needsRebuild) "点击⟳重载" else "Tap制造"
+        }
+    }
+
+    /** 把任意链接交给系统处理(浏览器 / 原生 App / intent:// 解析)。 */
+    private fun dispatchExternalIntent(url: String) {
+        val ctx = context ?: return
+        try {
+            val intent: Intent = if (url.startsWith("intent://")) {
+                // intent:// 协议常见于 QQ/微信/H5 拉起 App,需要 parseUri 解析
+                Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+            } else {
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to dispatch external intent: $url", e)
+        }
+    }
+
+    /**
+     * 硬刷新:
+     *  - 若 session 已死 → 整体重建(close 旧的、new 新的、open、loadUri)
+     *  - 若 session 还在 → bypass-cache reload
+     */
+    private fun hardReload() {
+        val gv = geckoView
+        val ctx = context
+        if (gv == null || ctx == null) return
+
+        if (needsRebuild || geckoSession == null) {
+            Log.i(TAG, "hardReload: rebuilding session")
+            rebuildSession()
+            return
         }
 
-        webContainer.addView(gv)
-        root.addView(topBar)
-        root.addView(webContainer)
+        Log.i(TAG, "hardReload: bypass-cache reload")
+        try {
+            geckoSession?.reload(GeckoSession.LOAD_FLAGS_BYPASS_CACHE)
+        } catch (e: Exception) {
+            Log.w(TAG, "reload() threw, falling back to rebuild", e)
+            rebuildSession()
+        }
+    }
 
-        // 顶部栏样式: 返回/刷新=强调色,标题/关闭保持原配色,仅应用字体
-        applyNativeTheme(ctx, backBtn!!, titleText, refreshBtn!!, closeBtn!!)
-
-        // 直接加载 Maker 页面(GeckoView 内部持久化 Cookie;首次需用户在页面内登录一次)
-        Log.w(TAG, "NOTE: GeckoView 153 StorageController 不暴露 cookieStore;" +
-                " 首次进入可能需要在页面内重新登录(Cookie 持久化到 Gecko 进程)。")
+    /** 完整重建 GeckoSession(黑屏/被杀后的恢复路径)。 */
+    private fun rebuildSession() {
+        if (rebuilding) return
+        rebuilding = true
+        val gv = geckoView
+        val ctx = context
+        val act = activity
+        if (gv == null || ctx == null || act == null) {
+            rebuilding = false
+            return
+        }
         act.runOnUiThread {
-            if (isAdded) {
-                Log.d(TAG, "Loading maker URL: $MAKER_URL")
-                session.loadUri(MAKER_URL)
+            try {
+                // 先拆掉旧 session
+                activeFilePrompt?.dismiss()
+                activeFilePrompt = null
+                activeFilePromptResult = null
+                val old = geckoSession
+                geckoSession = null
+                try { old?.close() } catch (_: Exception) {}
+
+                // 创建新的
+                val newSession = createAndOpenSession(getRuntime(ctx), gv)
+                geckoSession = newSession
+                needsRebuild = false
+                canGoBackState = false
+                currentUrl = null
+                backBtn?.isEnabled = false
+                backBtn?.alpha = 0.4f
+                Log.i(TAG, "Session rebuilt; loading $MAKER_URL")
+                newSession.loadUri(MAKER_URL)
+            } catch (e: Exception) {
+                Log.e(TAG, "rebuildSession failed", e)
+            } finally {
+                rebuilding = false
             }
         }
-
-        return root
     }
 
     @Suppress("DEPRECATION")
@@ -441,14 +513,10 @@ class MakerWebFragment : Fragment() {
     }
 
     fun destroyWebView() {
-        try {
-            activeFilePrompt?.dismiss()
-        } catch (_: Exception) {}
+        try { activeFilePrompt?.dismiss() } catch (_: Exception) {}
         activeFilePrompt = null
         activeFilePromptResult = null
-        try {
-            geckoSession?.close()
-        } catch (_: Exception) {}
+        try { geckoSession?.close() } catch (_: Exception) {}
         geckoSession = null
         geckoView = null
     }
@@ -465,7 +533,7 @@ class MakerWebFragment : Fragment() {
     private var themedViews: ThemedViews? = null
 
     private fun applyNativeTheme(
-        ctx: android.content.Context,
+        ctx: Context,
         backBtn: TextView, titleText: TextView,
         refreshBtn: TextView, closeBtn: TextView
     ) {
@@ -481,14 +549,35 @@ class MakerWebFragment : Fragment() {
             FontHelper.applyTopBarStyle(ctx, v.backBtn, v.refreshBtn)
             FontHelper.applyFont(ctx, v.titleText, v.closeBtn)
         }
-        // 激活 GeckoSession(前台)
+        // 与系统浏览器/WebView 行为对齐:不在 onPause/onHiddenChanged 主动 setActive(false),
+        // 避免 Gecko 主动把内容进程降到低优先级被系统频繁杀掉、造成黑屏。
+        // 仅显式确保激活态;若真的被系统回收,onKill 会置 needsRebuild,此时才重建。
         geckoSession?.setActive(true)
+        if (needsRebuild) {
+            Log.i(TAG, "onResume: Gecko 进程已被杀,重建 session")
+            rebuildSession()
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        // 失活 GeckoSession(后台,节省资源)
-        geckoSession?.setActive(false)
+        // 故意不调 setActive(false) — 保持与系统 WebView 一致的后台行为,
+        // 短时间切后台回来页面状态(正在编辑的游戏/滚动/表单)完全保留。
+    }
+
+    /**
+     * MainActivity 用 ft.hide/show 切换 Tab(不触发 onResume/onPause)。
+     * 同样不主动停活 Tab,保证切回来就是原页面;只有 onKill 标记时才重建。
+     */
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (!hidden) {
+            Log.d(TAG, "onHiddenChanged: shown, needsRebuild=$needsRebuild")
+            geckoSession?.setActive(true)
+            if (needsRebuild) {
+                rebuildSession()
+            }
+        }
     }
 
     private fun dp(value: Int): Int {
@@ -501,22 +590,21 @@ class MakerWebFragment : Fragment() {
         private const val MAKER_URL = "https://maker.taptap.cn/"
         private const val REQUEST_FILE_CHOOSER = 2001
 
-        // GeckoRuntime 单例(每个进程只需创建一次,内部维护 Gecko 引擎的主线程和配置)
+        // Chrome Android UA(去掉 WebView 的 "; wv" 标记,与 BackendWebViewActivity 行为一致)。
+        // TapTap 登录页根据 UA 决定是否展示扫码入口以及是否走原生 App 拉起,必须保持和系统
+        // Chrome/WebView 一致,否则会落到"只能账号密码+H5 QQ 登录"的简化面板。
+        private const val CHROME_UA =
+            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+
         @Volatile
         private var runtime: GeckoRuntime? = null
 
-        fun getRuntime(context: android.content.Context): GeckoRuntime {
+        fun getRuntime(context: Context): GeckoRuntime {
             runtime?.let { return it }
             synchronized(this) {
                 runtime?.let { return it }
 
-                // GeckoRuntimeSettings 配置:
-                //  - fissionEnabled(true): 显式开启站点隔离(默认已开,显式确认 SAB 可用)
-                //  - remoteDebuggingEnabled(true): 允许 USB 远程调试(about:debugging)
-                //  - consoleOutput(true)/debugLogging(true): 把 Gecko 内部日志打到 logcat
-                //  - aboutConfigEnabled(true): 允许 about:config 调试
-                //  - javaScriptEnabled(true): 显式允许 JS(WASM 多线程需要)
-                //  - 使用 applicationContext 避免 Activity 泄漏
                 val settings = GeckoRuntimeSettings.Builder()
                     .fissionEnabled(true)
                     .javaScriptEnabled(true)
