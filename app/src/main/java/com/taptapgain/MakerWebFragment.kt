@@ -637,65 +637,33 @@ class MakerWebFragment : Fragment() {
             )
         }
 
-        // logo 方块(白底承载 App 图标, 3px 白边 + 6px 黑阴影)
-        val logoSize = dp(112)
-        val logoCard = FrameLayout(ctx).apply {
+        // 品牌主 logo(包含角色立绘 + TapSulor 字标,自带深蓝底色;无需额外白底卡片)
+        val logoSize = dp(220)
+        val logoImg = ImageView(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(logoSize, logoSize).apply {
-                bottomMargin = dp(18)
+                bottomMargin = dp(10)
             }
-            setBackgroundColor(Color.WHITE)
-            elevation = dp(8).toFloat()
-            translationZ = dp(8).toFloat()
-            val pad = dp(6)
-            setPadding(pad, pad, pad, pad)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageResource(R.drawable.maker_logo)
             // 入场前初始态:缩小 + 轻微旋转 + 透明
             alpha = 0f
             scaleX = 0.4f
             scaleY = 0.4f
             rotation = -8f
         }
-        // 白色描边(前景叠加一个白底描边 shape)
-        val logoBorder = GradientDrawable().apply {
-            setColor(Color.TRANSPARENT)
-            setStroke(dp(3), Color.parseColor("#E6FFFFFF"))
-        }
-        logoCard.foreground = logoBorder
-
-        val logoImg = ImageView(ctx).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setImageResource(R.mipmap.ic_launcher)
-        }
-        logoCard.addView(logoImg)
-
-        // 品牌名
-        val brand = TextView(ctx).apply {
-            text = "TapSulor"
-            setTextColor(Color.WHITE)
-            textSize = 32f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            letterSpacing = 0.08f
-            setShadowLayer(6f, 3f, 3f, Color.parseColor("#33000000"))
-            gravity = Gravity.CENTER
-            alpha = 0f
-            translationY = dp(12).toFloat()
-        }
 
         // 副标语
         val tagline = TextView(ctx).apply {
             text = "Tap 制造 · 开发者工作台"
             setTextColor(Color.parseColor("#E6FFFFFF"))
-            textSize = 11f
+            textSize = 12f
             letterSpacing = 0.18f
             gravity = Gravity.CENTER
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            lp.topMargin = dp(6)
+            lp.topMargin = dp(2)
             layoutParams = lp
             alpha = 0f
             translationY = dp(8).toFloat()
@@ -704,29 +672,19 @@ class MakerWebFragment : Fragment() {
             } catch (_: Exception) {}
         }
 
-        content.addView(logoCard)
-        content.addView(brand)
+        content.addView(logoImg)
         content.addView(tagline)
         container.addView(content)
 
         // 入场动画 —— 在 view attach 到窗口后执行,避免首帧还没测量就启动导致的跳变
         container.post {
             // logo pop
-            logoCard.animate()
+            logoImg.animate()
                 .alpha(1f)
                 .scaleX(1f).scaleY(1f)
                 .rotation(0f)
                 .setDuration(700)
                 .setInterpolator(OvershootInterpolator(1.4f))
-                .start()
-
-            // brand fade + up (延迟 250ms)
-            brand.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setStartDelay(250)
-                .setDuration(600)
-                .setInterpolator(DecelerateInterpolator())
                 .start()
 
             // tagline fade + up (延迟 420ms)
