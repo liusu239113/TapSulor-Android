@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#25B6E9">
+  <title>TapSulor</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/pixelforge.css">
+</head>
+<body>
+  <div id="splash" aria-hidden="true">
+    <div class="splash-logo"><img src="app-icon.png" alt="TapSulor"></div>
+    <div class="splash-brand">TapSulor</div>
+  </div>
+  <div id="auth-boot"><div class="boot-box"><div class="boot-cursor"></div><strong>正在校验会话</strong><span>正在验证开发者账号...</span></div></div>
+  <div class="app">
+
+    <!-- ===== 顶部指挥条 ===== -->
+    <header class="command-bar">
+      <div class="brand-chip">
+        <img class="brand-chip-logo" src="app-icon.png" alt="TapSulor" width="28" height="28">
+        <div class="brand-chip-copy">
+          <span class="brand-chip-name">TapSulor</span>
+          <span class="brand-chip-sub">数据监控面板</span>
+        </div>
+      </div>
+      <div class="command-actions">
+        <button class="icon-btn" title="同步数据" id="refresh-btn" aria-label="同步数据">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 9A8 8 0 0 0 6.2 5.5L4 10M4 15a8 8 0 0 0 13.8 3.5L20 14"/></svg>
+        </button>
+        <button class="icon-btn" title="设置" id="settings-btn" aria-label="设置">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ===== 操作员条 ===== -->
+    <section class="operator-strip" id="operator-strip">
+      <img class="op-avatar" id="active-account-avatar" src="app-icon.png" alt="" hidden>
+      <div class="op-left">
+        <span class="op-kicker">运营主体</span>
+        <strong id="active-account-name">正在识别账号...</strong>
+        <span id="active-account-id" class="op-mono">连接 TapTap 开发者中心</span>
+      </div>
+      <button class="op-manage" type="button" id="studio-switch-btn" aria-haspopup="listbox" aria-expanded="false">切换工作室 ▾</button>
+      <div class="studio-dropdown" id="studio-dropdown" role="listbox" hidden></div>
+    </section>
+
+    <!-- ===== 三宫格数据瓦片（取代原来的大横幅 + 两卡片）===== -->
+    <section class="stat-deck">
+      <div class="stat-tile stat-tile-cumulative">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag">累计收益</span>
+          <span class="stat-tile-dot"></span>
+        </div>
+        <div class="stat-tile-value" id="summary-total">¥0.00</div>
+        <div class="stat-tile-meta" id="summary-total-meta">等待数据同步</div>
+      </div>
+      <div class="stat-tile stat-tile-yesterday">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag" id="summary-today-label">昨日广告收益</span>
+        </div>
+        <div class="stat-tile-value" id="summary-today">¥0.00</div>
+        <div class="stat-tile-meta">昨日</div>
+      </div>
+      <div class="stat-tile stat-tile-month">
+        <div class="stat-tile-head">
+          <span class="stat-tile-tag">本月广告收益</span>
+        </div>
+        <div class="stat-tile-value" id="summary-month">¥0.00</div>
+        <div class="stat-tile-meta" id="summary-month-meta">
+          <span class="meta-row">本月</span>
+          <span class="meta-row" id="summary-month-avg">日均 ¥—</span>
+          <span class="meta-row" id="summary-month-proj">月末预估 ¥—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 月度目标（JS 控制显隐） -->
+    <div class="month-goal-section" id="month-goal-section" hidden>
+      <div class="month-goal-header"><span class="month-goal-title">月度任务进度</span><span class="month-goal-value" id="month-goal-value">¥0</span></div>
+      <div class="month-goal-bar"><div class="month-goal-fill" id="month-goal-fill"></div></div>
+      <div class="month-goal-text" id="month-goal-text">-</div>
+    </div>
+
+    <!-- ===== 项目区块头（Tab 风格） ===== -->
+    <div class="deck-header">
+      <div class="deck-title">
+        <span class="deck-index">02</span>
+        <span>项目列表</span>
+        <span class="deck-sub">项目收益</span>
+      </div>
+      <div class="deck-tools">
+        <span class="game-count" id="game-count">0</span>
+      </div>
+    </div>
+    <!-- 项目搜索框：输入关键词实时过滤 -->
+    <div class="game-search-wrap">
+      <svg class="game-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+      </svg>
+      <input type="search" id="game-search" class="game-search-input" placeholder="搜索项目名称..." autocomplete="off">
+      <button type="button" class="game-search-clear" id="game-search-clear" hidden>×</button>
+    </div>
+    <div class="game-grid" id="game-list"><div class="loading-tip">数据加载中...</div></div>
+
+    <footer class="app-footer"><span id="app-version-footer">TapSulor / v1.0.1</span></footer>
+
+    <!-- ===== 设置面板 ===== -->
+    <div class="settings-modal" id="settings-modal" hidden>
+      <div class="settings-overlay" id="settings-overlay"></div>
+      <div class="settings-panel">
+        <div class="settings-header">
+          <div><span>控制面板</span><h2>控制台设置</h2></div>
+          <button class="settings-close" id="settings-close" title="关闭">×</button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-block">
+            <div class="settings-item-text"><div class="settings-item-title">外观主题</div><div class="settings-item-desc">切换浅色 / 深色模式，并选择你喜欢的强调色</div></div>
+            <div class="settings-row">
+              <span class="settings-row-label">显示模式</span>
+              <div class="mode-switch" id="mode-switch">
+                <button type="button" data-mode="light" class="is-active">浅色</button>
+                <button type="button" data-mode="dark">深色</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <span class="settings-row-label">强调色</span>
+              <div class="theme-dots" id="theme-dots">
+                <button type="button" class="theme-dot is-active" data-accent="cyan" title="晴空蓝" style="--dot:linear-gradient(135deg,#25B6E9,#5ED5F5);"></button>
+                <button type="button" class="theme-dot" data-accent="pink" title="樱花粉" style="--dot:linear-gradient(135deg,#FF7FB3,#FFB1D0);"></button>
+                <button type="button" class="theme-dot" data-accent="purple" title="梦幻紫" style="--dot:linear-gradient(135deg,#8B7CF6,#B4A8FB);"></button>
+                <button type="button" class="theme-dot" data-accent="mint" title="薄荷绿" style="--dot:linear-gradient(135deg,#36C9A0,#7DE3C2);"></button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <span class="settings-row-label">字体</span>
+              <div class="mode-switch" id="font-switch">
+                <button type="button" data-font="default" class="is-active">默认</button>
+                <button type="button" data-font="pixel">像素体</button>
+                <button type="button" data-font="chaoku">潮酷体</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <span class="settings-row-label">音效</span>
+              <label class="switch">
+                <input type="checkbox" id="sound-toggle" checked>
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="settings-divider"></div>
+          <div class="settings-block account-block">
+            <div class="settings-item-text"><div class="settings-item-title">开发者账号仓库</div><div class="settings-item-desc">每个账号保存独立登录会话，切换后自动刷新收益数据</div></div>
+            <div class="account-list" id="account-list"></div>
+            <button class="account-add-btn" id="account-add-btn">+ 接入其他账号</button>
+            <div class="account-add-hint" id="account-add-hint">请在打开的 TapTap 页面完成登录</div>
+          </div>
+          <div class="settings-divider"></div>
+          <div class="settings-about">
+            <div class="settings-about-title">系统信息</div>
+            <div class="settings-about-row"><span>版本</span><span id="app-version-settings">TapSulor / 1.0.1</span></div>
+            <div class="settings-about-row">
+              <span>更新</span>
+              <button type="button" class="settings-link-btn" id="check-update-btn">检查更新</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="android-bridge.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

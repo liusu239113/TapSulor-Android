@@ -34,10 +34,13 @@
 -keep class okio.** { *; }
 
 # === Gson(反射序列化字段) ===
--keepattributes Signature
--keepattributes *Annotation*
+# Signature: 保留泛型签名(TypeToken<List<Foo>> 反射必需)
+# InnerClasses/EnclosingMethod: 匿名 TypeToken 子类需要父类/内部类信息
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
 -dontwarn sun.misc.**
 -keep class com.google.gson.** { *; }
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
 -keep class * extends com.google.gson.TypeAdapter
 -keep class * implements com.google.gson.TypeAdapterFactory
 -keep class * implements com.google.gson.JsonSerializer
