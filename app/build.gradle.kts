@@ -79,5 +79,11 @@ configurations.configureEach {
         // GeckoView 仅使用 ContextCompat 等基础兼容类,不依赖 core 1.16 新 API
         force("androidx.core:core:1.13.1")
         force("androidx.core:core-ktx:1.13.1")
+        // 强制 kotlin-stdlib 对齐 Kotlin 编译器 1.9.20,避免 GeckoView 143 拉来的 2.2.10 元数据冲突
+        // (kotlin-compiler 1.9 只能读到 metadata 2.0.0,kotlin-stdlib 2.2 的 metadata 是 2.2.0)
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-common:1.9.24")
     }
 }
