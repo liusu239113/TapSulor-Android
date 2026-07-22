@@ -14,7 +14,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
@@ -38,6 +37,17 @@ import org.mozilla.geckoview.GeckoSessionSettings
  * GeckoView 是 Mozilla 官方提供的可嵌入 Android View(就像 WebView 一样嵌在布局里),
  * 但内置 Firefox 完整渲染引擎,默认开启站点隔离(Fission),原生支持 SharedArrayBuffer
  * 和 WASM 多线程,完全在 App 进程内渲染,无任何外部 Activity 跳转。
+ *
+ * 注意:GeckoView 153 的公开 API 与旧版文档/博客差异较大:
+ *  - 没有 session.load(String),用 loadUri(String) 或 load(Loader().uri(...))
+ *  - 没有 evaluateJS / isDebugMode / PromptResponse.DISMISS / FileCallback
+ *  - onLocationChange 签名是 (session, url, List, Boolean);多参数用于子框架导航事件
+ *  - onNewSession 返回 GeckoResult<GeckoSession>;想把弹窗留在当前 session,直接 loadUri
+ *    并返回 GeckoResult.deny() 阻止 GeckoView 新建窗口
+ *  - onFilePrompt 拿到 FilePrompt 后,其 confirm(Context, Uri[])/dismiss() 直接返回
+ *    PromptResponse,再由 GeckoResult<PromptResponse> 发回引擎
+ *  - StorageController 不暴露 cookieStore;本版本先跳过敏捷 Cookie 同步,用户首次进入
+ *    需要在 GeckoView 内重新登录一次(Cookie 存储是持久的,后续重启 App 自动复用)。
  */
 class MakerWebFragment : Fragment() {
 
@@ -48,8 +58,14 @@ class MakerWebFragment : Fragment() {
     private var refreshBtn: TextView? = null
     private var closeBtn: TextView? = null
 
-    // 文件选择回调(GeckoView PromptDelegate 触发)
-    private var filePromptCallback: GeckoSession.PromptDelegate.FileCallback? = null
+    // 跟踪回退栈状态(由 NavigationDelegate.onCanGoBack 回调驱动)
+    private var canGoBackState: Boolean = false
+    // 当前 URL(由 onLocationChange 回调记录,用于日志)
+    private var currentUrl: String? = null
+
+    // 文件选择:先暂存 Prompt 对象和异步 GeckoResult,在 onActivityResult 中完成
+    private var activeFilePrompt: GeckoSession.PromptDelegate.FilePrompt? = null
+    private var activeFilePromptResult: GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -153,6 +169,7 @@ class MakerWebFragment : Fragment() {
         val session = GeckoSession(
             GeckoSessionSettings.Builder()
                 .usePrivateMode(false)
+                .allowJavascript(true)
                 .build()
         )
         geckoSession = session
@@ -163,8 +180,6 @@ class MakerWebFragment : Fragment() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            // 启用调试(便于排查;release 包可关闭)
-            isDebugMode = true
         }
         geckoView = gv
 
@@ -173,19 +188,23 @@ class MakerWebFragment : Fragment() {
         gv.setSession(session)
 
         // === 导航代理(替代 WebViewClient) ===
+        // 注意 onLocationChange 在 GeckoView 153 中是 4 个参数,后两个用于子框架导航
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(
                 session: GeckoSession,
-                url: String?
+                url: String?,
+                changedSessions: MutableList<GeckoSession>?,
+                hasUserGesture: Boolean?
             ) {
-                Log.d(TAG, "onLocationChange: $url")
-                updateBackButton()
+                currentUrl = url
+                Log.d(TAG, "onLocationChange: $url (hasUserGesture=$hasUserGesture)")
             }
 
             override fun onCanGoBack(
                 session: GeckoSession,
                 canGoBack: Boolean
             ) {
+                canGoBackState = canGoBack
                 activity?.runOnUiThread {
                     backBtn?.isEnabled = canGoBack
                     backBtn?.alpha = if (canGoBack) 1.0f else 0.4f
@@ -223,25 +242,53 @@ class MakerWebFragment : Fragment() {
             }
 
             override fun onNewSession(
-                session: GeckoSession,
+                newSession: GeckoSession,
                 uri: String
             ): GeckoResult<GeckoSession>? {
-                // window.open() 弹出的新窗口(登录授权等)在当前 session 内加载
-                Log.d(TAG, "onNewSession (popup): $uri")
-                session.load(uri)
-                return GeckoResult.fromValue(null)
+                // window.open() 弹出的新窗口(登录授权等)在当前主 session 内加载,
+                // 并返回 deny() 告诉 GeckoView 不要真的新建 GeckoSession。
+                // 注意:不能在 newSession 上 loadUri,因为 deny() 后它会被丢弃。
+                Log.d(TAG, "onNewSession (popup), loading in current session: $uri")
+                geckoSession?.loadUri(uri)
+                return GeckoResult.deny()
+            }
+
+            override fun onLoadError(
+                session: GeckoSession,
+                url: String?,
+                error: org.mozilla.geckoview.WebRequestError?
+            ): GeckoResult<AllowOrDeny>? {
+                Log.w(TAG, "onLoadError: $url error=$error")
+                return null // 让 GeckoView 走默认错误页
             }
         }
 
-        // === 内容代理(替代 WebChromeClient 的标题/进度/alerts) ===
+        // === 内容代理(替代 WebChromeClient 的标题/全屏/crash 等) ===
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onTitleChange(session: GeckoSession, title: String?) {
-                super.onTitleChange(session, title)
                 if (!title.isNullOrEmpty() && title.length <= 20) {
                     titleText.text = title
                 } else {
                     titleText.text = "Tap制造"
                 }
+            }
+
+            override fun onCloseRequest(session: GeckoSession) {
+                Log.d(TAG, "onCloseRequest")
+            }
+
+            override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
+                Log.d(TAG, "onFullScreen: $fullScreen")
+            }
+
+            override fun onCrash(session: GeckoSession) {
+                Log.e(TAG, "GeckoView CRASH — reloading")
+                session.reload()
+            }
+
+            override fun onKill(session: GeckoSession) {
+                Log.e(TAG, "GeckoView KILLED by system — reloading")
+                session.reload()
             }
         }
 
@@ -252,75 +299,76 @@ class MakerWebFragment : Fragment() {
             }
 
             override fun onPageStop(session: GeckoSession, success: Boolean) {
+                Log.i(TAG, "onPageStop success=$success url=${currentUrl ?: "?"}")
                 if (success) {
-                    // 注入 CSS: 清零 Maker 网页顶部自带的状态栏/工具栏留白,与原生顶栏不重复
-                    val js = """
-                        (function(){
-                            var s=document.getElementById('__tapsulor_topfix__');
-                            if(!s){
-                                s=document.createElement('style');
-                                s.id='__tapsulor_topfix__';
-                                s.textContent='html,body{padding-top:0!important;margin-top:0!important;}'+
-                                    'body>*:first-child{margin-top:0!important;padding-top:0!important;}';
-                                document.head.appendChild(s);
-                            }
-                            var cands=document.querySelectorAll('[class*="safe-area"],[class*="SafeArea"],[class*="top-bar"],[class*="TopBar"],[class*="navbar"],[class*="Navbar"],header');
-                            for(var i=0;i<cands.length;i++){
-                                var el=cands[i];
-                                var cs=getComputedStyle(el);
-                                if((cs.position==='fixed'||cs.position==='sticky')&&parseFloat(cs.top)===0){
-                                    el.style.display='none';
-                                }else{
-                                    el.style.paddingTop='0';
-                                    el.style.marginTop='0';
-                                }
-                            }
-                            window.scrollTo(0,0);
-                            // 诊断: 输出 SAB/crossOriginIsolated 状态
-                            console.log('[TapSulor] crossOriginIsolated='+window.crossOriginIsolated+' hasSAB='+(typeof SharedArrayBuffer!=='undefined'));
-                            return window.crossOriginIsolated === true ? 'SAB_OK' : 'SAB_NOT_ISOLATED';
-                        })();
-                    """.trimIndent()
-                    session.evaluateJS(js)?.then({ result ->
-                        Log.i(TAG, "Page JS injected, crossOriginIsolated=$result")
-                        GeckoResult.fromValue(null)
-                    }, { error ->
-                        Log.w(TAG, "JS injection failed: ${error?.message}")
-                        GeckoResult.fromValue(null)
-                    })
+                    titleText.text = "Tap制造"
+                } else {
+                    titleText.text = "加载失败"
                 }
             }
+
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                // 可在此加进度条;目前仅打日志
+                if (progress in 1..99) {
+                    Log.v(TAG, "progress: $progress%")
+                }
+            }
+
+            override fun onSecurityChange(
+                session: GeckoSession,
+                info: GeckoSession.ProgressDelegate.SecurityInformation?
+            ) {}
+
+            override fun onSessionStateChange(
+                session: GeckoSession,
+                state: GeckoSession.ProgressDelegate.SessionState?
+            ) {}
         }
 
         // === Prompt 代理(处理文件选择器/JS alert/confirm) ===
+        // GeckoView 153 的 FilePrompt 不再暴露 callback 字段;我们把 Prompt 对象和
+        // GeckoResult 暂存,在 onActivityResult 里通过 prompt.confirm/dismiss 拿到
+        // PromptResponse 后,complete 到返回的 GeckoResult 中。
         session.promptDelegate = object : GeckoSession.PromptDelegate {
             override fun onFilePrompt(
                 session: GeckoSession,
                 prompt: GeckoSession.PromptDelegate.FilePrompt
-            ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
-                // 清空上一次未处理的回调
-                filePromptCallback?.dismiss()
-                filePromptCallback = prompt.callback
+            ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
+                // 释放上一次未处理的 prompt(防止泄漏)
+                activeFilePrompt?.dismiss()
+                activeFilePrompt = prompt
+
+                val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
+                activeFilePromptResult = result
 
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
+                    type = if (prompt.mimeTypes?.isNotEmpty() == true) {
+                        prompt.mimeTypes.joinToString(",")
+                    } else {
+                        "*/*"
+                    }
+                    if (prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE) {
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }
                 }
+
                 return try {
                     startActivityForResult(
                         Intent.createChooser(intent, "选择文件"),
                         REQUEST_FILE_CHOOSER
                     )
-                    // 返回 null 表示异步处理,稍后在 onActivityResult 中通过 callback 确认/取消
-                    null
+                    // 返回 GeckoResult,稍后在 onActivityResult 中 complete
+                    result
                 } catch (e: Exception) {
-                    filePromptCallback = null
-                    GeckoResult.fromValue(
-                        prompt.dismiss().takeIf { it != null }
-                            ?: GeckoSession.PromptDelegate.PromptResponse.DISMISS
-                    )
+                    Log.w(TAG, "Failed to start file chooser", e)
+                    activeFilePrompt = null
+                    activeFilePromptResult = null
+                    GeckoResult.fromValue(prompt.dismiss())
                 }
             }
+
+            // 其余弹窗(alert/confirm/text/auth 等)走默认处理即可
         }
 
         webContainer.addView(gv)
@@ -330,13 +378,13 @@ class MakerWebFragment : Fragment() {
         // 顶部栏样式: 返回/刷新=强调色,标题/关闭保持原配色,仅应用字体
         applyNativeTheme(ctx, backBtn!!, titleText, refreshBtn!!, closeBtn!!)
 
-        // === Cookie 同步后再加载 Maker 页面 ===
-        syncCookiesToGecko(runtime) {
-            act.runOnUiThread {
-                if (isAdded) {
-                    Log.d(TAG, "Loading maker URL: $MAKER_URL")
-                    session.load(MAKER_URL)
-                }
+        // 直接加载 Maker 页面(GeckoView 内部持久化 Cookie;首次需用户在页面内登录一次)
+        Log.w(TAG, "NOTE: GeckoView 153 StorageController 不暴露 cookieStore;" +
+                " 首次进入可能需要在页面内重新登录(Cookie 持久化到 Gecko 进程)。")
+        act.runOnUiThread {
+            if (isAdded) {
+                Log.d(TAG, "Loading maker URL: $MAKER_URL")
+                session.loadUri(MAKER_URL)
             }
         }
 
@@ -347,113 +395,52 @@ class MakerWebFragment : Fragment() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_FILE_CHOOSER) {
-            val cb = filePromptCallback
-            filePromptCallback = null
-            if (cb != null) {
-                if (resultCode == Activity.RESULT_OK && data?.data != null) {
-                    cb.confirm(arrayOf(data.data!!))
-                } else {
-                    cb.dismiss()
-                }
-            }
-        }
-    }
+            val prompt = activeFilePrompt
+            val result = activeFilePromptResult
+            activeFilePrompt = null
+            activeFilePromptResult = null
 
-    /** 将 AccountManager 中保存的 TapTap Cookie 注入 GeckoRuntime 的 Cookie 存储。 */
-    private fun syncCookiesToGecko(runtime: GeckoRuntime, onComplete: () -> Unit) {
-        val ctx = context ?: run { onComplete(); return }
-        val accountManager = AccountManager(ctx)
-        val accountId = accountManager.getCurrentAccountId()
+            if (prompt == null || result == null) return
 
-        // 收集所有 TapTap 相关 URL 的 cookie
-        val urls = listOf(
-            "https://maker.taptap.cn/",
-            "https://developer.taptap.cn/",
-            "https://www.taptap.cn/",
-            "https://passport.taptap.cn/",
-            "https://taptap.cn/"
-        )
-
-        val cookieStrings = mutableListOf<Pair<String, String>>() // (uri, cookieString)
-        for (urlStr in urls) {
+            val ctx = context
             try {
-                val httpUrl = urlStr.toHttpUrl()
-                val cookies = accountManager.getCookiesForUrl(accountId, httpUrl)
-                for (c in cookies) {
-                    val cookieStr = buildString {
-                        append(c.name).append('=').append(c.value)
-                        append("; Domain=").append(if (c.hostOnly) c.domain else ".$c.domain")
-                        append("; Path=").append(c.path)
-                        if (c.secure) append("; Secure")
-                        if (c.httpOnly) append("; HttpOnly")
+                if (resultCode == Activity.RESULT_OK && ctx != null) {
+                    val uris = mutableListOf<Uri>()
+                    val clip = data?.clipData
+                    if (clip != null) {
+                        for (i in 0 until clip.itemCount) {
+                            clip.getItemAt(i).uri?.let { uris.add(it) }
+                        }
+                    } else {
+                        data?.data?.let { uris.add(it) }
                     }
-                    cookieStrings.add(urlStr to cookieStr)
+                    if (uris.isNotEmpty()) {
+                        result.complete(prompt.confirm(ctx, uris.toTypedArray()))
+                    } else {
+                        result.complete(prompt.dismiss())
+                    }
+                } else {
+                    result.complete(prompt.dismiss())
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to get cookies for $urlStr", e)
-            }
-        }
-
-        Log.d(TAG, "Syncing ${cookieStrings.size} cookies to GeckoView")
-
-        if (cookieStrings.isEmpty()) {
-            onComplete()
-            return
-        }
-
-        val cookieStore = runtime.storageController.cookieStore
-        var pending = cookieStrings.size
-        val done = {
-            pending--
-            if (pending <= 0) {
-                activity?.runOnUiThread(onComplete) ?: onComplete()
-            }
-        }
-
-        for ((uri, cookieStr) in cookieStrings) {
-            try {
-                cookieStore.setCookie(uri, cookieStr)?.then({
-                    Log.v(TAG, "Cookie set: ${cookieStr.take(40)}...")
-                    done()
-                    GeckoResult.fromValue(null)
-                }, { error ->
-                    Log.w(TAG, "Failed to set cookie: ${error?.message}")
-                    done()
-                    GeckoResult.fromValue(null)
-                }) ?: done()
-            } catch (e: Exception) {
-                Log.w(TAG, "Exception setting cookie", e)
-                done()
+                Log.w(TAG, "onActivityResult file prompt completion failed", e)
+                try { result.complete(prompt.dismiss()) } catch (_: Exception) {}
             }
         }
     }
 
-    private fun updateBackButton() {
-        val s = geckoSession ?: return
-        try {
-            s.canGoBack().then { canBack ->
-                activity?.runOnUiThread {
-                    backBtn?.isEnabled = canBack == true
-                    backBtn?.alpha = if (canBack == true) 1.0f else 0.4f
-                }
-                GeckoResult.fromValue(null)
-            }
-        } catch (_: Exception) {}
-    }
-
-    fun canGoBack(): Boolean = geckoSession?.let {
-        try {
-            // GeckoSession.canGoBack() returns GeckoResult<Boolean>, but for quick check we use navigation history
-            // Use a best-effort synchronous check; the delegate updates the button state async
-            backBtn?.isEnabled ?: false
-        } catch (_: Exception) { false }
-    } ?: false
+    fun canGoBack(): Boolean = canGoBackState
 
     fun goBack() {
         geckoSession?.goBack()
     }
 
     fun destroyWebView() {
+        try {
+            activeFilePrompt?.dismiss()
+        } catch (_: Exception) {}
+        activeFilePrompt = null
+        activeFilePromptResult = null
         try {
             geckoSession?.close()
         } catch (_: Exception) {}
@@ -519,10 +506,18 @@ class MakerWebFragment : Fragment() {
                 runtime?.let { return it }
 
                 // GeckoRuntimeSettings 配置:
-                //  - aboutConfigEnabled: 允许 about:config 调试(可选)
-                //  - 不强制关闭 multiprocess/Fission(默认开启 → 站点隔离 → SAB 可用)
-                //  - 使用应用 context 避免 Activity 泄漏
+                //  - fissionEnabled(true): 显式开启站点隔离(默认已开,显式确认 SAB 可用)
+                //  - remoteDebuggingEnabled(true): 允许 USB 远程调试(about:debugging)
+                //  - consoleOutput(true)/debugLogging(true): 把 Gecko 内部日志打到 logcat
+                //  - aboutConfigEnabled(true): 允许 about:config 调试
+                //  - javaScriptEnabled(true): 显式允许 JS(WASM 多线程需要)
+                //  - 使用 applicationContext 避免 Activity 泄漏
                 val settings = GeckoRuntimeSettings.Builder()
+                    .fissionEnabled(true)
+                    .javaScriptEnabled(true)
+                    .remoteDebuggingEnabled(true)
+                    .consoleOutput(true)
+                    .debugLogging(true)
                     .aboutConfigEnabled(true)
                     .build()
 

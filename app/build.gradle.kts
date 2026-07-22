@@ -67,9 +67,16 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     // GeckoView(Firefox 内核) — 真正内嵌在 App 内的浏览器组件,支持 SharedArrayBuffer/WASM 多线程
     // 不同于 WebView,GeckoView 自带独立的站点隔离能力(Fission),可直接运行 SCE/UrhoX 多线程 WASM 游戏
-    // 选用 153 版(2026-07):只有 150+ 的 API 表面包含本项目所用的现代接口
-    //   (load(String)/evaluateJS/isDebugMode/FileCallback/cookieStore/GeckoResult<Boolean> canGoBack/
-    //    PromptResponse.DISMISS/onLocationChange(url:String?)/onPageStart 新签名)
+    // 选用 153 版(2026-07)。实际 API 表面(已通过解包 arm64 AAR class 文件确认):
+    //   - session.loadUri(String) / session.load(Loader)  (没有 load(String))
+    //   - NavigationDelegate.onLocationChange(session, url, List<GeckoSession>?, Boolean?) — 4 个参数
+    //   - NavigationDelegate.onNewSession 必须返回 GeckoResult<GeckoSession>;弹窗在当前 session 加载并 deny()
+    //   - 通过 onCanGoBack(session, Boolean) 回调回退状态(没有 canGoBack():GeckoResult<Boolean>)
+    //   - 文件选择:onFilePrompt 拿到 FilePrompt,confirm(Context, Uri[])/dismiss() 返回 PromptResponse
+    //     (没有 FileCallback / PromptResponse.DISMISS 常量)
+    //   - GeckoRuntimeSettings.Builder 控制调试开关(没有 GeckoView.isDebugMode)
+    //   - StorageController 不暴露 cookieStore;Cookie 同步在本版放弃,用户首次需要在 GeckoView 内登录一次
+    //   - 没有 evaluateJS / 脚本注入 API;如需注入 CSS/JS 需走 WebExtension(本版未启用)
     // 153 的传递依赖:
     //   androidx.core:1.18.0 → 声明 minCompileSdk>=36,本项目 compileSdk=34,强制到 1.13.1
     //   kotlin-stdlib:2.3.21 → metadata 2.3.0,本项目 kotlin-compiler 1.9.20 只能读 ≤2.0.0,强制到 1.9.24
