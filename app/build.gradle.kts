@@ -67,26 +67,39 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     // GeckoView(Firefox 内核) — 真正内嵌在 App 内的浏览器组件,支持 SharedArrayBuffer/WASM 多线程
     // 不同于 WebView,GeckoView 自带独立的站点隔离能力(Fission),可直接运行 SCE/UrhoX 多线程 WASM 游戏
-    // 选用 149 版(2026-04):其 API 表面已稳定为现代形态
-    //   (load(Loader)/evaluateJS/isDebugMode/FileCallback/cookieStore/GeckoResult<Boolean> canGoBack/
+    // 选用 153 版(2026-07):只有 150+ 的 API 表面包含本项目所用的现代接口
+    //   (load(String)/evaluateJS/isDebugMode/FileCallback/cookieStore/GeckoResult<Boolean> canGoBack/
     //    PromptResponse.DISMISS/onLocationChange(url:String?)/onPageStart 新签名)
-    // 其传递依赖 androidx.core:1.17.0 声明 minCompileSdk>=36,kotlin-stdlib:2.3.10 metadata 2.3.0
-    // 本项目 compileSdk=34 + kotlin-compiler 1.9.20,通过 resolutionStrategy 强制回退:
-    //   core → 1.13.1, kotlin-stdlib → 1.9.24 (GeckoView 仅用基础兼容类,不依赖新版 API)
-    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:149.0.20260403140140")
+    // 153 的传递依赖:
+    //   androidx.core:1.18.0 → 声明 minCompileSdk>=36,本项目 compileSdk=34,强制到 1.13.1
+    //   kotlin-stdlib:2.3.21 → metadata 2.3.0,本项目 kotlin-compiler 1.9.20 只能读 ≤2.0.0,强制到 1.9.24
+    //   androidx.media3:*:1.10.1 → minCompileSdk>=36,强制到 1.3.1 (minCompileSdk=34,API 兼容)
+    //   其它传递依赖 (annotation/collection/lifecycle) 为 KMP/JVM jar,无 minCompileSdk 约束
+    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260715202819")
 }
 
 configurations.configureEach {
     resolutionStrategy {
         // 强制 androidx.core 系列到 1.13.1,保持 compileSdk=34 兼容
-        // GeckoView 仅使用 ContextCompat 等基础兼容类,不依赖 core 1.17 新 API
+        // GeckoView 仅使用 ContextCompat 等基础兼容类,不依赖 core 1.18 新 API
         force("androidx.core:core:1.13.1")
         force("androidx.core:core-ktx:1.13.1")
-        // 强制 kotlin-stdlib 对齐 Kotlin 编译器 1.9.20,避免 GeckoView 149 拉来的 2.3.10 元数据冲突
+        // 强制 kotlin-stdlib 对齐 Kotlin 编译器 1.9.20,避免 GeckoView 153 拉来的 2.3.21 元数据冲突
         // (kotlin-compiler 1.9 只能读到 metadata 2.0.0,kotlin-stdlib 2.3 的 metadata 是 2.3.0)
         force("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
         force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
         force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24")
         force("org.jetbrains.kotlin:kotlin-stdlib-common:1.9.24")
+        // 强制 androidx.media3 全家桶到 1.3.1,避免 GeckoView 153 直接依赖的 1.10.1 (minCompileSdk=36) 与 compileSdk=34 冲突
+        // 1.3.1 是最后一个 minCompileSdk=34 的版本,所有 GeckoView 用到的 API 在 1.3.1 都已存在
+        force("androidx.media3:media3-common:1.3.1")
+        force("androidx.media3:media3-datasource:1.3.1")
+        force("androidx.media3:media3-decoder:1.3.1")
+        force("androidx.media3:media3-exoplayer:1.3.1")
+        force("androidx.media3:media3-exoplayer-hls:1.3.1")
+        // media3-exoplayer:1.10.1 还会传递拉到 container/extractor/database,统一降到 1.3.1
+        force("androidx.media3:media3-container:1.3.1")
+        force("androidx.media3:media3-extractor:1.3.1")
+        force("androidx.media3:media3-database:1.3.1")
     }
 }
