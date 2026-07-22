@@ -67,5 +67,6 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     // GeckoView(Firefox 内核) — 真正内嵌在 App 内的浏览器组件,支持 SharedArrayBuffer/WASM 多线程
     // 不同于 WebView,GeckoView 自带独立的站点隔离能力,可直接运行 SCE/UrhoX 多线程 WASM 游戏
-    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260715202819")
+    // 132 版(2024-11)是经确认最后一个传递依赖无需 compileSdk 36 的稳定版本(androidx.core:1.13.1、无 media3)
+    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:132.0.20241110192737")
 }
