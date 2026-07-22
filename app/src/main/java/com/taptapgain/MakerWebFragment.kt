@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -15,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.webkit.MimeTypeMap
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -28,6 +30,10 @@ import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.GeckoSessionSettings
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.util.UUID
 
 /**
  * 使用 GeckoView(Firefox 内核)渲染 Tap 制造页面的 Fragment。
@@ -546,17 +552,38 @@ class MakerWebFragment : Fragment() {
             val ctx = context
             try {
                 if (resultCode == Activity.RESULT_OK && ctx != null) {
-                    val uris = mutableListOf<Uri>()
+                    val srcUris = mutableListOf<Uri>()
                     val clip = data?.clipData
                     if (clip != null) {
                         for (i in 0 until clip.itemCount) {
-                            clip.getItemAt(i).uri?.let { uris.add(it) }
+                            clip.getItemAt(i).uri?.let { srcUris.add(it) }
                         }
                     } else {
-                        data?.data?.let { uris.add(it) }
+                        data?.data?.let { srcUris.add(it) }
                     }
-                    if (uris.isNotEmpty()) {
-                        result.complete(prompt.confirm(ctx, uris.toTypedArray()))
+                    if (srcUris.isNotEmpty()) {
+                        // GeckoView 153 的 FilePrompt.confirm() 内部会对每个 URI 调
+                        // IntentUtils.resolveContentUri() 去读 _DATA 列拿真实路径;
+                        // Android 10+ 分区存储下 ACTION_GET_CONTENT 返回的 content:// URI
+                        // 通常没有真实文件路径,_DATA 为 null → Gecko 拿到空路径 → 服务端回
+                        // "图片处理失败"。解决办法:把选中的流复制到 app cache 目录的真实文件,
+                        // 然后用 Uri.fromFile(file) (file:// 协议) 传给 GeckoView,
+                        // GeckoView 对 file:// 直接取 getPath() 读盘,绕开 ContentResolver。
+                        val resolved = mutableListOf<Uri>()
+                        for (src in srcUris) {
+                            val fileUri = materializeToFileUri(ctx, src)
+                            if (fileUri != null) {
+                                resolved.add(fileUri)
+                            } else {
+                                Log.w(TAG, "Failed to materialize URI, skipping: $src")
+                            }
+                        }
+                        if (resolved.isNotEmpty()) {
+                            Log.i(TAG, "File prompt confirmed with ${resolved.size} materialized file(s)")
+                            result.complete(prompt.confirm(ctx, resolved.toTypedArray()))
+                        } else {
+                            result.complete(prompt.dismiss())
+                        }
                     } else {
                         result.complete(prompt.dismiss())
                     }
@@ -568,6 +595,117 @@ class MakerWebFragment : Fragment() {
                 try { result.complete(prompt.dismiss()) } catch (_: Exception) {}
             }
         }
+    }
+
+    /**
+     * 把任意 content:// / file:// URI 物化为 app cache 目录下的真实文件,返回 file:// URI。
+     *
+     * 为什么必须物化:见 onActivityResult 注释 —— GeckoView 需要真实文件路径。
+     *
+     * 命名规则: uploads/<uuid>.<ext>
+     *   - ext 优先用 MIME 反查(image/jpeg → jpg),否则用原始 DISPLAY_NAME 的扩展名,再不行用 "bin"
+     *   - cache 目录下超过 50 个文件或 1 小时以上的旧文件会被清理,避免占用空间
+     *
+     * 调用端:必须在 UI/后台线程均可(本函数是阻塞 I/O,onActivityResult 返回路径可承受几十毫秒)。
+     */
+    private fun materializeToFileUri(ctx: Context, src: Uri): Uri? {
+        return try {
+            val cr = ctx.contentResolver
+            // 1) 先解析 MIME 与原始文件名
+            val mimeType: String? = cr.getType(src)
+            var displayName: String? = null
+            try {
+                cr.query(src, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) displayName = c.getString(idx)
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val ext = guessExtension(mimeType, displayName)
+
+            // 2) 准备上传缓存目录
+            val dir = File(ctx.cacheDir, "uploads").apply { mkdirs() }
+            cleanupOldUploads(dir)
+
+            val dst = File(dir, "up_${UUID.randomUUID()}.$ext")
+
+            // 3) 复制流
+            cr.openInputStream(src)?.use { input ->
+                FileOutputStream(dst).use { output ->
+                    input.copyTo(output, 8192)
+                    output.flush()
+                }
+            } ?: run {
+                Log.w(TAG, "contentResolver.openInputStream returned null for $src")
+                return null
+            }
+
+            if (!dst.exists() || dst.length() == 0L) {
+                Log.w(TAG, "Materialized file is empty for $src")
+                dst.delete()
+                return null
+            }
+            Log.i(TAG, "Materialized $src -> ${dst.absolutePath} (${dst.length()} bytes, mime=$mimeType)")
+            Uri.fromFile(dst)
+        } catch (e: IOException) {
+            Log.w(TAG, "materializeToFileUri IO error for $src", e)
+            null
+        } catch (e: SecurityException) {
+            Log.w(TAG, "materializeToFileUri permission denied for $src", e)
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "materializeToFileUri failed for $src", e)
+            null
+        }
+    }
+
+    private fun guessExtension(mimeType: String?, displayName: String?): String {
+        // 1) MIME 反查
+        if (!mimeType.isNullOrBlank()) {
+            val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
+            if (!ext.isNullOrBlank()) return ext
+        }
+        // 2) 原始文件名取扩展 —— 用本地 val dn 捕获避免 !! 断言
+        val dn = displayName
+        if (!dn.isNullOrBlank()) {
+            val dot = dn.lastIndexOf('.')
+            if (dot >= 0 && dot < dn.length - 1) {
+                val e = dn.substring(dot + 1).lowercase()
+                // 过滤异常扩展(超过 8 字符通常不是扩展)
+                if (e.length in 1..8 && e.all { it.isLetterOrDigit() }) return e
+            }
+        }
+        return "bin"
+    }
+
+    /** 超过 1 小时或超过 50 个文件时清理旧上传缓存。 */
+    private fun cleanupOldUploads(dir: File) {
+        try {
+            val files = dir.listFiles() ?: return
+            val now = System.currentTimeMillis()
+            val maxAgeMs = 60L * 60L * 1000L // 1 小时
+            var count = 0
+            for (f in files) {
+                if (f.isFile) {
+                    val age = now - f.lastModified()
+                    if (age > maxAgeMs) {
+                        f.delete()
+                    } else {
+                        count++
+                    }
+                }
+            }
+            // 如果还是很多,按最后修改时间排序,删掉最老的
+            if (count > 50) {
+                val remaining = dir.listFiles()?.filter { it.isFile }?.sortedBy { it.lastModified() } ?: return
+                val toDelete = remaining.size - 50
+                for (i in 0 until toDelete) {
+                    remaining[i].delete()
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     fun canGoBack(): Boolean = canGoBackState
