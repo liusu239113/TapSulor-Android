@@ -386,19 +386,25 @@ class MakerWebFragment : Fragment() {
                 val mimeTypes = prompt.mimeTypes
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
-                    type = if (!mimeTypes.isNullOrEmpty()) {
-                        mimeTypes.joinToString(",")
+                    // Android Intent.type 只能接受单个 MIME；多类型必须通过 EXTRA_MIME_TYPES 传数组。
+                    // 否则逗号拼接(如 "image/png,image/jpeg") 会被当成非法 MIME，系统选择器返回空列表（"相册没有图片"）。
+                    val hasWildcard = mimeTypes.isNullOrEmpty() || mimeTypes.any { it.trim() == "*/*" }
+                    if (hasWildcard) {
+                        type = "*/*"
                     } else {
-                        "*/*"
+                        type = "*/*"
+                        putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
                     }
                     if (prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE) {
                         putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                     }
+                    // 部分 ROM/选择器需要显式 FLAG 才会把返回的 URI 读权限授予本进程
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
 
                 return try {
                     startActivityForResult(
-                        Intent.createChooser(intent, "选择文件"),
+                        Intent.createChooser(intent, "选择图片或文件"),
                         REQUEST_FILE_CHOOSER
                     )
                     result
