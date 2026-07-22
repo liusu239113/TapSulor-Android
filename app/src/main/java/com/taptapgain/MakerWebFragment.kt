@@ -192,8 +192,8 @@ class MakerWebFragment : Fragment() {
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(
                 session: GeckoSession,
-                url: String,
-                changedSessions: List<GeckoSession>?,
+                url: String?,
+                changedPermissions: List<GeckoSession.PermissionDelegate.ContentPermission>,
                 hasUserGesture: Boolean
             ) {
                 currentUrl = url
@@ -246,19 +246,20 @@ class MakerWebFragment : Fragment() {
                 uri: String
             ): GeckoResult<GeckoSession>? {
                 // window.open() 弹出的新窗口(登录授权等)在当前主 session 内加载,
-                // 并返回 deny() 告诉 GeckoView 不要真的新建 GeckoSession。
-                // 注意:不能在 newSession 上 loadUri,因为 deny() 后它会被丢弃。
+                // 并返回 null 告诉 GeckoView 走默认处理(即不新建 GeckoSession)。
+                // GeckoResult.deny() 返回 GeckoResult<AllowOrDeny>,无法直接赋给
+                // GeckoResult<GeckoSession>;而 NavigationDelegate.onNewSession 的契约
+                // 里,返回 null 即代表"不处理新窗口",引擎会丢弃 newSession。
                 Log.d(TAG, "onNewSession (popup), loading in current session: $uri")
                 geckoSession?.loadUri(uri)
-                @Suppress("UNCHECKED_CAST")
-                return GeckoResult.deny<Any?>() as GeckoResult<GeckoSession>?
+                return null
             }
 
             override fun onLoadError(
                 session: GeckoSession,
-                url: String,
+                url: String?,
                 error: org.mozilla.geckoview.WebRequestError
-            ): GeckoResult<AllowOrDeny>? {
+            ): GeckoResult<String>? {
                 Log.w(TAG, "onLoadError: $url error=$error")
                 return null // 让 GeckoView 走默认错误页
             }
@@ -322,7 +323,7 @@ class MakerWebFragment : Fragment() {
 
             override fun onSessionStateChange(
                 session: GeckoSession,
-                state: GeckoSession.SessionState?
+                state: GeckoSession.SessionState
             ) {}
         }
 
