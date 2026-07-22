@@ -67,9 +67,17 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     // GeckoView(Firefox 内核) — 真正内嵌在 App 内的浏览器组件,支持 SharedArrayBuffer/WASM 多线程
     // 不同于 WebView,GeckoView 自带独立的站点隔离能力,可直接运行 SCE/UrhoX 多线程 WASM 游戏
-    // 143 版(2025-10)是经确认的甜区版本:
-    //   - 传递依赖 androidx.core:1.16.0 + 无 media3 → 兼容 compileSdk 34
-    //   - 144+ 起升级到 core:1.17.0 要求 compileSdk 36
-    //   - 143 的 API 已是现代形态(load(Loader)/evaluateJS/isDebugMode/cookieStore/GeckoResult<Boolean> canGoBack)
+    // 143 版(2025-10)的 API 已是现代形态(load(Loader)/evaluateJS/isDebugMode/cookieStore/GeckoResult<Boolean> canGoBack)
+    // 其传递依赖 androidx.core:1.16.0 声明 minCompileSdk=35;本项目 compileSdk=34,通过 resolutionStrategy
+    // 将 core 强制回退到 1.13.1(GeckoView 仅使用 ContextCompat 等基础兼容类,不依赖 core 1.16 新 API)
     implementation("org.mozilla.geckoview:geckoview-arm64-v8a:143.0.20251003115653")
+}
+
+configurations.configureEach {
+    resolutionStrategy {
+        // 强制 androidx.core 系列到 1.13.1,保持 compileSdk=34 兼容
+        // GeckoView 仅使用 ContextCompat 等基础兼容类,不依赖 core 1.16 新 API
+        force("androidx.core:core:1.13.1")
+        force("androidx.core:core-ktx:1.13.1")
+    }
 }
