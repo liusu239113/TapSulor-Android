@@ -160,6 +160,36 @@ class MainActivity : AppCompatActivity() {
         switchToTabInternal(tabId)
     }
 
+    /**
+     * 供 MakerWebFragment 在网页进入/退出全屏时调用:
+     *  - 隐藏底部导航 → tab_container(weight=1) 会自动吃满剩余高度,网页全区域可见
+     *  - 恢复时仅在冷启动已经展示过底栏的前提下再显示,避免开屏阶段过早露出
+     */
+    fun setBottomNavVisible(visible: Boolean, animate: Boolean = true) {
+        if (!::bottomNav.isInitialized) return
+        val target = if (visible) View.VISIBLE else View.GONE
+        if (bottomNav.visibility == target) return
+        if (visible && !bottomNavShown) return  // 冷启动尚未到展示时机,忽略
+        if (animate) {
+            val from = if (visible) 0f else 1f
+            val to = if (visible) 1f else 0f
+            bottomNav.alpha = from
+            bottomDivider.alpha = from
+            bottomNav.visibility = View.VISIBLE
+            bottomDivider.visibility = View.VISIBLE
+            bottomNav.animate().alpha(to).setDuration(180).withEndAction {
+                if (!visible) {
+                    bottomNav.visibility = View.GONE
+                    bottomDivider.visibility = View.GONE
+                }
+            }.start()
+            bottomDivider.animate().alpha(to).setDuration(180).start()
+        } else {
+            bottomNav.visibility = target
+            bottomDivider.visibility = target
+        }
+    }
+
     /** 内部真正的 Tab 切换逻辑（不触发导航选中回调）。 */
     private fun switchToTabInternal(tabId: Int) {
         if (tabId == currentTabId) return

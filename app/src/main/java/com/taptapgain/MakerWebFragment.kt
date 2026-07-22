@@ -59,6 +59,9 @@ class MakerWebFragment : Fragment() {
     private var backBtn: TextView? = null
     private var refreshBtn: TextView? = null
     private var closeBtn: TextView? = null
+    private var topBar: LinearLayout? = null
+    // 当前网页是否处于全屏状态(用于切 Tab / 销毁时兜底恢复)
+    private var isInFullScreen: Boolean = false
 
     // 跟踪回退栈状态
     private var canGoBackState: Boolean = false
@@ -96,7 +99,7 @@ class MakerWebFragment : Fragment() {
         }
 
         // === Top bar ===
-        val topBar = LinearLayout(ctx).apply {
+        topBar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -156,10 +159,13 @@ class MakerWebFragment : Fragment() {
             }
         }
 
-        topBar.addView(backBtn)
-        topBar.addView(titleText)
-        topBar.addView(refreshBtn)
-        topBar.addView(closeBtn)
+        // 本地 val 捕获: topBar 是可变 var 字段, Kotlin 不允许 smart cast 到非空 LinearLayout,
+        // 这里用 !! 断言后赋值给本地 val, 后续 addView 全部通过 tb 访问。
+        val tb = topBar!!
+        tb.addView(backBtn)
+        tb.addView(titleText)
+        tb.addView(refreshBtn)
+        tb.addView(closeBtn)
 
         // === GeckoView 容器 ===
         val webContainer = FrameLayout(ctx).apply {
@@ -199,7 +205,7 @@ class MakerWebFragment : Fragment() {
             scheduleSplashFallback()
         }
 
-        root.addView(topBar)
+        root.addView(tb)
         root.addView(webContainer)
 
         applyNativeTheme(ctx, backBtn!!, titleText, refreshBtn!!, closeBtn!!)
@@ -326,6 +332,11 @@ class MakerWebFragment : Fragment() {
 
             override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
                 Log.d(TAG, "onFullScreen: $fullScreen")
+                isInFullScreen = fullScreen
+                val act = activity ?: return
+                act.runOnUiThread {
+                    applyFullScreenUi(fullScreen)
+                }
             }
 
             override fun onCrash(session: GeckoSession) {
@@ -388,13 +399,14 @@ class MakerWebFragment : Fragment() {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     // Android Intent.type 只能接受单个 MIME；多类型必须通过 EXTRA_MIME_TYPES 传数组。
                     // 否则逗号拼接(如 "image/png,image/jpeg") 会被当成非法 MIME，系统选择器返回空列表（"相册没有图片"）。
-                    val hasWildcard = mimeTypes.isNullOrEmpty() || mimeTypes.any { it.trim() == "*/*" }
-                    if (hasWildcard) {
+                    // 本地 val mt 捕获: 让 Kotlin 在 else 分支中 smart cast 为非空 Array<out String>。
+                    val mt = mimeTypes
+                    if (mt.isNullOrEmpty() || mt.any { it.trim() == "*/*" }) {
                         type = "*/*"
                     } else {
                         type = "*/*"
                         // GeckoView mimeTypes 是 Array<out String>,Intent.EXTRA_MIME_TYPES 需要 Array<String>,复制一份
-                        putExtra(Intent.EXTRA_MIME_TYPES, Array(mimeTypes.size) { i -> mimeTypes[i] })
+                        putExtra(Intent.EXTRA_MIME_TYPES, Array(mt.size) { i -> mt[i] })
                     }
                     if (prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE) {
                         putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -424,6 +436,19 @@ class MakerWebFragment : Fragment() {
         act.runOnUiThread {
             titleText.text = if (needsRebuild) "点击⟳重载" else "Tap制造"
         }
+    }
+
+    /**
+     * 网页进入/退出全屏时切换 UI:
+     *  - 隐藏 Maker 自带的 48dp topBar,让 GeckoView 占满 Fragment 高度
+     *  - 通过 MainActivity 隐藏/恢复底部导航 tab,使网页区域完整可见
+     * 切走 Tab 或 Fragment 销毁时若仍在全屏,会在 onHiddenChanged/onDestroyView 兜底恢复。
+     */
+    private fun applyFullScreenUi(fullScreen: Boolean) {
+        val tb = topBar ?: return
+        tb.visibility = if (fullScreen) View.GONE else View.VISIBLE
+        val act = activity as? MainActivity
+        act?.setBottomNavVisible(!fullScreen)
     }
 
     /** 把任意链接交给系统处理(浏览器 / 原生 App / intent:// 解析)。 */
@@ -734,6 +759,13 @@ class MakerWebFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // 兜底:Fragment 销毁时若网页仍在全屏,强制退出并恢复 UI(避免主页底栏被隐藏)
+        if (isInFullScreen) {
+            try { geckoSession?.exitFullScreen() } catch (_: Exception) {}
+            isInFullScreen = false
+            activity?.runOnUiThread { applyFullScreenUi(false) }
+        }
+        topBar = null
         destroyWebView()
         super.onDestroyView()
     }
@@ -783,6 +815,12 @@ class MakerWebFragment : Fragment() {
      */
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
+        // 切到其它 Tab 时若网页还在全屏,强制退出并恢复 UI(避免主页底栏仍是隐藏状态)
+        if (hidden && isInFullScreen) {
+            try { geckoSession?.exitFullScreen() } catch (_: Exception) {}
+            isInFullScreen = false
+            activity?.runOnUiThread { applyFullScreenUi(false) }
+        }
         if (!hidden) {
             Log.d(TAG, "onHiddenChanged: shown, needsRebuild=$needsRebuild")
             geckoSession?.setActive(true)
