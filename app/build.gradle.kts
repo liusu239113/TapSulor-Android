@@ -15,12 +15,17 @@ android {
         }
     }
 
+    // GeckoView 只提供 arm64-v8a 单架构变体,过滤 ABI 减少 APK 体积
+    // (绝大多数现代 Android 设备(含小米)都是 arm64-v8a;Android 12+ 新设备强制 arm64)
     defaultConfig {
         applicationId = "com.taptapgain"
         minSdk = 26
         targetSdk = 34
         versionCode = 3
         versionName = "1.0.2"
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
     buildFeatures {
         buildConfig = true
@@ -60,4 +65,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("androidx.browser:browser:1.8.0")
+    // GeckoView(Firefox 内核) — 真正内嵌在 App 内的浏览器组件,支持 SharedArrayBuffer/WASM 多线程
+    // 不同于 WebView,GeckoView 自带独立的站点隔离能力,可直接运行 SCE/UrhoX 多线程 WASM 游戏
+    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260715202819")
 }
