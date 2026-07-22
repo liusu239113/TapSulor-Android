@@ -3,6 +3,9 @@ package com.taptapgain
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -11,6 +14,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -70,8 +74,9 @@ class MakerWebFragment : Fragment() {
 
     // 冷启动 splash:本进程内首次进入 Tap 制造 Tab 时显示,加载完成后淡出。
     // 仅在进程冷启动(或被系统杀掉后重启)时展示一次,普通 Tab 切换不重复触发。
-    private var splashView: ImageView? = null
+    private var splashView: View? = null
     private var splashDismissed: Boolean = false
+    private var splashMediaPlayer: MediaPlayer? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -183,22 +188,14 @@ class MakerWebFragment : Fragment() {
 
         // === 冷启动 splash 覆盖层(仅本进程首次进入 Maker 时可见) ===
         // 用全局 companion 标志保证进程生命周期内只显示一次 —— Tab 切换/返回/重建 session 都不重复。
+        // 不再使用静态大图,改用代码绘制的渐变背景 + logo pop 动画 + 品牌名淡入,
+        // 与主面板 web 端 #splash 的视觉风格保持一致。
         if (!splashShownInProcess) {
-            val splash = ImageView(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setImageResource(R.drawable.splash_maker)
-                isClickable = true
-                isFocusable = true
-                alpha = 1.0f
-                contentDescription = "TapSulor"
-            }
+            val splash = buildAnimatedSplash(ctx)
             webContainer.addView(splash)
             splashView = splash
             splashShownInProcess = true
+            playSplashSound(ctx)
             scheduleSplashFallback()
         }
 
@@ -223,13 +220,14 @@ class MakerWebFragment : Fragment() {
             GeckoSessionSettings.Builder()
                 .usePrivateMode(false)
                 .allowJavascript(true)
-                // 关键:桌面模式
-                //  - VIEWPORT_MODE_DESKTOP: 桌面视口(980px 布局视口, 不触发移动端 <meta viewport>)
-                //  - USER_AGENT_MODE_DESKTOP + DESKTOP_UA: 伪装成桌面 Chrome Windows
-                // maker.taptap.cn 直接下发 PC 版页面,登录面板自动展示扫码 / QQ / 微信 / 手机号全入口。
-                .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_DESKTOP)
-                .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP)
-                .userAgentOverride(DESKTOP_UA)
+                // 平板(iPad)模式:
+                //  - VIEWPORT_MODE_MOBILE: 用移动端视口(<meta viewport> 生效,适配触屏缩放)
+                //  - USER_AGENT_MODE_MOBILE + IPAD_UA: 伪装成 iPad Safari,
+                //    maker.taptap.cn 会下发平板版页面(比 PC 版更适合手机/平板触屏操作,
+                //    登录面板仍保留扫码 / QQ / 微信 / 手机号入口)。
+                .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+                .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+                .userAgentOverride(IPAD_UA)
                 .build()
         )
         attachDelegates(session)
@@ -550,6 +548,12 @@ class MakerWebFragment : Fragment() {
         try { activeFilePrompt?.dismiss() } catch (_: Exception) {}
         activeFilePrompt = null
         activeFilePromptResult = null
+        // 释放启动音效播放器(若还在播放)
+        splashMediaPlayer?.let { mp ->
+            try { mp.stop() } catch (_: Exception) {}
+            try { mp.release() } catch (_: Exception) {}
+        }
+        splashMediaPlayer = null
         splashView?.let { v ->
             v.animate().cancel()
             (v.parent as? ViewGroup)?.removeView(v)
@@ -572,9 +576,12 @@ class MakerWebFragment : Fragment() {
         val act = activity ?: return
         act.runOnUiThread {
             v.animate().cancel()
+            // 出场动画对齐 web 端 #splash.is-done: opacity 0 + scale 1.08, 700ms ease
             v.animate()
                 .alpha(0f)
-                .setDuration(280)
+                .scaleX(1.08f)
+                .scaleY(1.08f)
+                .setDuration(700)
                 .setInterpolator(DecelerateInterpolator())
                 .withEndAction {
                     (v.parent as? ViewGroup)?.removeView(v)
@@ -587,6 +594,178 @@ class MakerWebFragment : Fragment() {
     private fun scheduleSplashFallback() {
         val v = splashView ?: return
         v.postDelayed({ dismissSplashIfVisible() }, SPLASH_MAX_MS)
+    }
+
+    /**
+     * 构建动画版启动页(代码绘制,不依赖静态大图)。
+     *
+     * 视觉对齐主面板 web 端 #splash:
+     *  - 135° 青蓝渐变背景 (#25B6E9 → #5ED5F5 → #A7E9F9)
+     *  - 128dp 白色圆角方块承载 App 图标,带浅色描边和偏移阴影
+     *  - 下方 "TapSulor" 粗体品牌名 + "Tap 制造" 副标语
+     *  - 入场: logo 从 0.4 倍 + 轻微旋转 pop 弹出(Overshoot),品牌名延迟 250ms 淡入上移
+     *  - 出场在 dismissSplashIfVisible() 统一处理: 整体淡出 + 轻微放大
+     */
+    private fun buildAnimatedSplash(ctx: Context): View {
+        val container = FrameLayout(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            isClickable = true
+            isFocusable = true
+            contentDescription = "TapSulor"
+            setBackgroundColor(0xFF25B6E9.toInt())
+        }
+
+        // 渐变背景层(用 GradientDrawable 比自定义 onDraw 更省/更平滑)
+        val bg = GradientDrawable(
+            GradientDrawable.Orientation.BL_TR,
+            intArrayOf(0xFF25B6E9.toInt(), 0xFF5ED5F5.toInt(), 0xFFA7E9F9.toInt())
+        )
+        @Suppress("DEPRECATION")
+        container.background = bg
+
+        // 内容竖排容器
+        val content = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        }
+
+        // logo 方块(白底承载 App 图标, 3px 白边 + 6px 黑阴影)
+        val logoSize = dp(112)
+        val logoCard = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(logoSize, logoSize).apply {
+                bottomMargin = dp(18)
+            }
+            setBackgroundColor(Color.WHITE)
+            elevation = dp(8).toFloat()
+            translationZ = dp(8).toFloat()
+            val pad = dp(6)
+            setPadding(pad, pad, pad, pad)
+            // 入场前初始态:缩小 + 轻微旋转 + 透明
+            alpha = 0f
+            scaleX = 0.4f
+            scaleY = 0.4f
+            rotation = -8f
+        }
+        // 白色描边(前景叠加一个白底描边 shape)
+        val logoBorder = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            setStroke(dp(3), Color.parseColor("#E6FFFFFF"))
+        }
+        logoCard.foreground = logoBorder
+
+        val logoImg = ImageView(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageResource(R.mipmap.ic_launcher)
+        }
+        logoCard.addView(logoImg)
+
+        // 品牌名
+        val brand = TextView(ctx).apply {
+            text = "TapSulor"
+            setTextColor(Color.WHITE)
+            textSize = 32f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            letterSpacing = 0.08f
+            setShadowLayer(6f, 3f, 3f, Color.parseColor("#33000000"))
+            gravity = Gravity.CENTER
+            alpha = 0f
+            translationY = dp(12).toFloat()
+        }
+
+        // 副标语
+        val tagline = TextView(ctx).apply {
+            text = "Tap 制造 · 开发者工作台"
+            setTextColor(Color.parseColor("#E6FFFFFF"))
+            textSize = 11f
+            letterSpacing = 0.18f
+            gravity = Gravity.CENTER
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(6)
+            layoutParams = lp
+            alpha = 0f
+            translationY = dp(8).toFloat()
+            try {
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            } catch (_: Exception) {}
+        }
+
+        content.addView(logoCard)
+        content.addView(brand)
+        content.addView(tagline)
+        container.addView(content)
+
+        // 入场动画 —— 在 view attach 到窗口后执行,避免首帧还没测量就启动导致的跳变
+        container.post {
+            // logo pop
+            logoCard.animate()
+                .alpha(1f)
+                .scaleX(1f).scaleY(1f)
+                .rotation(0f)
+                .setDuration(700)
+                .setInterpolator(OvershootInterpolator(1.4f))
+                .start()
+
+            // brand fade + up (延迟 250ms)
+            brand.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(250)
+                .setDuration(600)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+
+            // tagline fade + up (延迟 420ms)
+            tagline.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(420)
+                .setDuration(600)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }
+
+        return container
+    }
+
+    /** 播放启动音效(从 raw/maker_splash.mp3 加载,一次性播放完自动释放)。 */
+    private fun playSplashSound(ctx: Context) {
+        try {
+            val mp = MediaPlayer.create(ctx, R.raw.maker_splash)
+            if (mp == null) {
+                Log.w(TAG, "Splash sound MediaPlayer.create returned null")
+                return
+            }
+            splashMediaPlayer = mp
+            mp.setVolume(0.8f, 0.8f)
+            mp.setOnCompletionListener { player ->
+                try { player.release() } catch (_: Exception) {}
+                if (splashMediaPlayer === player) splashMediaPlayer = null
+            }
+            mp.setOnErrorListener { player, _, _ ->
+                try { player.release() } catch (_: Exception) {}
+                if (splashMediaPlayer === player) splashMediaPlayer = null
+                true
+            }
+            mp.start()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to play splash sound", e)
+            splashMediaPlayer = null
+        }
     }
 
     override fun onDestroyView() {
@@ -665,12 +844,12 @@ class MakerWebFragment : Fragment() {
         @Volatile
         private var splashShownInProcess: Boolean = false
 
-        // 桌面 Chrome Windows UA。
-        // 与 VIEWPORT_MODE_DESKTOP + USER_AGENT_MODE_DESKTOP 配合,让 maker.taptap.cn 下发 PC 版页面,
-        // 登录面板会展示完整入口(TapTap App 扫码 / QQ / 微信 / 手机号)。
-        private const val DESKTOP_UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        // iPad Safari UA(平板模式)。
+        // 与 VIEWPORT_MODE_MOBILE + USER_AGENT_MODE_MOBILE 配合,让 maker.taptap.cn 下发平板版页面,
+        // 兼顾触屏操作体验和完整的登录入口(TapTap App 扫码 / QQ / 微信 / 手机号)。
+        private const val IPAD_UA =
+            "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 " +
+            "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
         @Volatile
         private var runtime: GeckoRuntime? = null
