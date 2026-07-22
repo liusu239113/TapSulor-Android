@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.net.Uri
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -56,10 +57,13 @@ class UpdateChecker(private val activity: Activity) {
     )
 
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
+        // 移动端网络抖动常见：对 GET 请求自动重试 1 次
+        .retryOnConnectionFailure(true)
         .build()
 
     // 与 Activity 生命周期绑定；Activity 销毁时取消所有在途请求，避免泄漏
@@ -76,19 +80,21 @@ class UpdateChecker(private val activity: Activity) {
         if (checking) return
         checking = true
         scope.launch {
-            val info = fetchUpdateInfo()
+            val (info, errMsg) = fetchUpdateInfo()
             checking = false
             when {
-                info == null -> if (!silent) {
-                    Toast.makeText(activity, "检查更新失败，请稍后重试", Toast.LENGTH_SHORT).show()
-                }
-                info.versionCode > BuildConfig.VERSION_CODE -> showUpdateDialog(info)
-                else -> if (!silent) {
+                info != null && info.versionCode > BuildConfig.VERSION_CODE -> showUpdateDialog(info)
+                info != null -> if (!silent) {
                     Toast.makeText(
                         activity,
                         "已是最新版本（${BuildConfig.VERSION_NAME}）",
                         Toast.LENGTH_SHORT
                     ).show()
+                }
+                else -> if (!silent) {
+                    // 把真实失败原因直接吐到 Toast 上，方便用户/开发者肉眼排查
+                    val reason = errMsg ?: "未知错误"
+                    Toast.makeText(activity, "检查更新失败：$reason", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -100,25 +106,55 @@ class UpdateChecker(private val activity: Activity) {
         currentDialog = null
     }
 
-    private suspend fun fetchUpdateInfo(): UpdateInfo? = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url("$UPDATE_BASE_URL$VERSION_JSON_PATH")
-                .header("User-Agent", "TapSulor/${BuildConfig.VERSION_NAME} (Android)")
-                .header("Accept", "application/json")
-                .build()
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext null
-                val body = resp.body?.string()?.takeIf { it.isNotBlank() } ?: return@withContext null
-                return@withContext try {
-                    com.google.gson.Gson().fromJson(body, UpdateInfo::class.java)
-                } catch (_: Exception) {
-                    null
+    private suspend fun fetchUpdateInfo(): Pair<UpdateInfo?, String?> = withContext(Dispatchers.IO) {
+        // 手动重试 1 次：覆盖 OkHttp retryOnConnectionFailure 没兜住的超时/5xx
+        var lastErr: String? = null
+        repeat(2) { attempt ->
+            val result = try {
+                val request = Request.Builder()
+                    .url("$UPDATE_BASE_URL$VERSION_JSON_PATH")
+                    .header("User-Agent", "TapSulor/${BuildConfig.VERSION_NAME} (Android)")
+                    .header("Accept", "application/json")
+                    .header("Cache-Control", "no-cache")
+                    .build()
+                client.newCall(request).execute().use { resp ->
+                    val code = resp.code
+                    if (!resp.isSuccessful) {
+                        Log.w(TAG, "fetch version.json HTTP $code (attempt ${attempt + 1})")
+                        lastErr = "HTTP $code"
+                        return@use null
+                    }
+                    val body = resp.body?.string()?.takeIf { it.isNotBlank() }
+                    if (body == null) {
+                        Log.w(TAG, "fetch version.json empty body (attempt ${attempt + 1})")
+                        lastErr = "响应为空"
+                        return@use null
+                    }
+                    try {
+                        com.google.gson.Gson().fromJson(body, UpdateInfo::class.java)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse version.json failed (attempt ${attempt + 1})", e)
+                        lastErr = "解析失败: ${e.javaClass.simpleName}"
+                        null
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "fetch version.json failed (attempt ${attempt + 1})", e)
+                // 把中文友好名挂上去，Toast 一眼能看懂
+                lastErr = when (e) {
+                    is java.net.SocketTimeoutException -> "连接超时"
+                    is java.net.UnknownHostException -> "DNS 解析失败"
+                    is javax.net.ssl.SSLException -> "HTTPS 证书错误"
+                    is java.net.ConnectException -> "服务器不可达"
+                    is java.io.IOException -> "网络错误"
+                    else -> "${e.javaClass.simpleName}"
+                }
+                null
             }
-        } catch (_: Exception) {
-            null
+            if (result != null) return@withContext (result to null)
         }
+        Log.e(TAG, "fetchUpdateInfo gave up after retries: $lastErr")
+        (null to (lastErr ?: "未知错误"))
     }
 
     private fun showUpdateDialog(info: UpdateInfo) {
@@ -332,6 +368,7 @@ class UpdateChecker(private val activity: Activity) {
     }
 
     companion object {
+        private const val TAG = "UpdateChecker"
         // 服务器根地址（用户部署在 https://ark.yanyususu.online/tapsulor/）。
         // 末尾需保留斜杠以拼 version.json 路径。
         private const val UPDATE_BASE_URL = "https://ark.yanyususu.online/tapsulor/"

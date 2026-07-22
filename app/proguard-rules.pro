@@ -49,6 +49,11 @@
   @com.google.gson.annotations.SerializedName <fields>;
 }
 
+# 自更新接口响应模型（Gson 反射构造/读字段；防止 R8 把字段删光或 <init> 签名改掉）
+-keep class com.taptapgain.UpdateChecker$UpdateInfo { <fields>; <init>(...); }
+# JS 桥接暴露给 WebView 的类必须保留类名（addJavascriptInterface 传的实例类名 + 反射查找 @JavascriptInterface 方法）
+-keep class com.taptapgain.WebAppInterface { *; }
+
 # === AndroidX / Material ===
 -keep class androidx.** { *; }
 -keep interface androidx.** { *; }
