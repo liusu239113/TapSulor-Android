@@ -393,7 +393,8 @@ class MakerWebFragment : Fragment() {
                         type = "*/*"
                     } else {
                         type = "*/*"
-                        putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+                        // GeckoView mimeTypes 是 Array<out String>,Intent.EXTRA_MIME_TYPES 需要 Array<String>,复制一份
+                        putExtra(Intent.EXTRA_MIME_TYPES, Array(mimeTypes.size) { i -> mimeTypes[i] })
                     }
                     if (prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE) {
                         putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
