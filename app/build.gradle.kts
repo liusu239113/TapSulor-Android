@@ -52,6 +52,11 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+        // GeckoView 153 的传递依赖(androidx.collection/annotation 等新版)使用 Kotlin 2.1
+        // 编译,metadata 版本为 2.1.0;本项目用 Kotlin 1.9.20 编译器,默认只读 ≤2.0.0。
+        // 这些 androidx 工具类在 GeckoView 中只以 Java 字节码形式调用,不会用到任何 Kotlin
+        // 2.1 语言特性,因此跳过 metadata 版本检查是安全的(不会产生运行时或语义差异)。
+        freeCompilerArgs += "-Xskip-metadata-version-check"
     }
 }
 dependencies {

@@ -192,9 +192,9 @@ class MakerWebFragment : Fragment() {
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(
                 session: GeckoSession,
-                url: String?,
-                changedSessions: MutableList<GeckoSession>?,
-                hasUserGesture: Boolean?
+                url: String,
+                changedSessions: List<GeckoSession>?,
+                hasUserGesture: Boolean
             ) {
                 currentUrl = url
                 Log.d(TAG, "onLocationChange: $url (hasUserGesture=$hasUserGesture)")
@@ -250,13 +250,14 @@ class MakerWebFragment : Fragment() {
                 // 注意:不能在 newSession 上 loadUri,因为 deny() 后它会被丢弃。
                 Log.d(TAG, "onNewSession (popup), loading in current session: $uri")
                 geckoSession?.loadUri(uri)
-                return GeckoResult.deny()
+                @Suppress("UNCHECKED_CAST")
+                return GeckoResult.deny<Any?>() as GeckoResult<GeckoSession>?
             }
 
             override fun onLoadError(
                 session: GeckoSession,
-                url: String?,
-                error: org.mozilla.geckoview.WebRequestError?
+                url: String,
+                error: org.mozilla.geckoview.WebRequestError
             ): GeckoResult<AllowOrDeny>? {
                 Log.w(TAG, "onLoadError: $url error=$error")
                 return null // 让 GeckoView 走默认错误页
@@ -294,7 +295,7 @@ class MakerWebFragment : Fragment() {
 
         // === 进度代理 ===
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
-            override fun onPageStart(session: GeckoSession, url: String?) {
+            override fun onPageStart(session: GeckoSession, url: String) {
                 titleText.text = "加载中..."
             }
 
@@ -316,12 +317,12 @@ class MakerWebFragment : Fragment() {
 
             override fun onSecurityChange(
                 session: GeckoSession,
-                info: GeckoSession.ProgressDelegate.SecurityInformation?
+                info: GeckoSession.ProgressDelegate.SecurityInformation
             ) {}
 
             override fun onSessionStateChange(
                 session: GeckoSession,
-                state: GeckoSession.ProgressDelegate.SessionState?
+                state: GeckoSession.SessionState?
             ) {}
         }
 
@@ -341,10 +342,13 @@ class MakerWebFragment : Fragment() {
                 val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
                 activeFilePromptResult = result
 
+                // prompt.mimeTypes 是跨模块 public API 属性,Kotlin 不允许智能类型转换;
+                // 先拷贝到本地 val 再判断
+                val mimeTypes = prompt.mimeTypes
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
-                    type = if (prompt.mimeTypes?.isNotEmpty() == true) {
-                        prompt.mimeTypes.joinToString(",")
+                    type = if (!mimeTypes.isNullOrEmpty()) {
+                        mimeTypes.joinToString(",")
                     } else {
                         "*/*"
                     }
