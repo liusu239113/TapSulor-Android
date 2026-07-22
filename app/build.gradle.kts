@@ -32,11 +32,11 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // 沙箱离线环境无法下载 lint-gradle，直接跳过 release lint
-            isShrinkResources = false
         }
         debug {
             signingConfig = signingConfigs.getByName("release")
