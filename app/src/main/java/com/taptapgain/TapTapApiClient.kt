@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
@@ -54,17 +55,17 @@ class TapTapApiClient(private val accountManager: AccountManager) {
 
     /** 登录状态 + 附属账号资料（昵称/头像/开发者主体名/Logo） */
     data class UserProfile(
-        val nickname: String? = null,
-        val avatar: String? = null,
-        val developerName: String? = null,
-        val developerAvatar: String? = null
+        @SerializedName("nickname") val nickname: String? = null,
+        @SerializedName("avatar") val avatar: String? = null,
+        @SerializedName("developerName") val developerName: String? = null,
+        @SerializedName("developerAvatar") val developerAvatar: String? = null
     )
 
     /** 工作室/厂商身份（一个 TapTap 账号可能绑定多个 developer_id） */
     data class Studio(
-        val id: String,
-        val name: String? = null,
-        val logo: String? = null
+        @SerializedName("id") val id: String,
+        @SerializedName("name") val name: String? = null,
+        @SerializedName("logo") val logo: String? = null
     )
 
     data class CheckLoginResult(

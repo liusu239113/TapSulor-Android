@@ -14,41 +14,41 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.ConcurrentHashMap
 
 data class Account(
-    val id: String,
-    val name: String,
-    val developerId: String? = null,
-    val partition: String = "persist:taptap",
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String,
+    @SerializedName("developerId") val developerId: String? = null,
+    @SerializedName("partition") val partition: String = "persist:taptap",
     /** 账号（用户）昵称，来自 /api/user/v1/me */
-    val nickname: String? = null,
+    @SerializedName("nickname") val nickname: String? = null,
     /** 账号（用户）头像 URL，来自 /api/user/v1/me */
-    val avatar: String? = null,
+    @SerializedName("avatar") val avatar: String? = null,
     /** 开发者主体/工作室名称，来自 /api/developer/v1/list */
-    val developerName: String? = null,
+    @SerializedName("developerName") val developerName: String? = null,
     /** 开发者主体/工作室 Logo URL，来自 /api/developer/v1/list */
-    val developerAvatar: String? = null,
+    @SerializedName("developerAvatar") val developerAvatar: String? = null,
     /** 当前账号下可用的工作室/厂商身份列表 */
-    val studios: List<StudioRef> = emptyList(),
+    @SerializedName("studios") val studios: List<StudioRef> = emptyList(),
     /** 当前选中的工作室 id（默认等于 developerId，切换后更新） */
-    val activeDeveloperId: String? = null
+    @SerializedName("activeDeveloperId") val activeDeveloperId: String? = null
 )
 
 /** 简化的工作室引用（用于持久化，引用 TapTapApiClient.Studio 的子集） */
 data class StudioRef(
-    val id: String,
-    val name: String? = null,
-    val logo: String? = null
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("logo") val logo: String? = null
 )
 
 data class AccountConfig(
-    val current: String = "acc-1",
-    val accounts: List<Account> = listOf(Account(id = "acc-1", name = "默认账号", partition = "persist:taptap"))
+    @SerializedName("current") val current: String = "acc-1",
+    @SerializedName("accounts") val accounts: List<Account> = listOf(Account(id = "acc-1", name = "默认账号", partition = "persist:taptap"))
 )
 
 data class AccountUpdate(
-    val developerId: String,
-    val isNew: Boolean = false,
-    val switched: Boolean = false,
-    val alreadyCurrent: Boolean = false
+    @SerializedName("developerId") val developerId: String,
+    @SerializedName("isNew") val isNew: Boolean = false,
+    @SerializedName("switched") val switched: Boolean = false,
+    @SerializedName("alreadyCurrent") val alreadyCurrent: Boolean = false
 )
 
 /**
