@@ -269,9 +269,14 @@ class CommunityFragment : Fragment() {
             }
             stepNumTvs.add(numTv)
             row.addView(numTv)
+            val lineH = dp(22)
+            val minLines = when (s.n) { 2, 3 -> 3; else -> 1 }
             val txtTv = makeTv(s.t, 14f, textPri, sel = true).apply {
                 gravity = Gravity.TOP or Gravity.START
-                setLineSpacing(dp(8).toFloat(), 1.3f); setPadding(0, 0, 0, dp(4))
+                setLineSpacing(dp(4).toFloat(), 1.0f)
+                includeFontPadding = false
+                minHeight = lineH * minLines
+                setPadding(0, dp(2), 0, dp(2))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
             stepTextTvs.add(txtTv)
