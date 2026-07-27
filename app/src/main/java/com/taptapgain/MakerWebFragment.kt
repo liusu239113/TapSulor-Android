@@ -365,7 +365,7 @@ class MakerWebFragment : Fragment() {
                 screenX: Int,
                 screenY: Int,
                 element: GeckoSession.ContentDelegate.ContextElement
-            ): GeckoResult<AllowOrDeny>? {
+            ) {
                 val act = activity ?: return
                 val ctx = act as? androidx.appcompat.app.AppCompatActivity ?: return
                 val imgUrl = element.srcUri
@@ -401,7 +401,6 @@ class MakerWebFragment : Fragment() {
                             .show()
                     }
                 }
-                return null
             }
         }
 
