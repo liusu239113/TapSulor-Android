@@ -1,6 +1,7 @@
 package com.taptapgain
 
 import android.annotation.SuppressLint
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -25,6 +26,7 @@ import androidx.fragment.app.Fragment
  * 1) 进入显示 Sulor Game 上传引导页（步骤说明 + 网站入口 logo）
  * 2) 点击 logo/名称后在同一容器加载 https://sulor.yanyususu.online/
  *    顶栏 ← / Sulor 社区 / ⟳ / ✕ ，与 Maker/Backend 风格一致
+ * 字体和主题色全部通过 FontHelper 动态读取，设置页修改后 onResume 立即同步。
  */
 class CommunityFragment : Fragment() {
 
@@ -38,12 +40,18 @@ class CommunityFragment : Fragment() {
     private var introView: View? = null
     private var inWebMode: Boolean = false
 
+    // 介绍页中所有需要跟随字体/主题色变化的元素
+    private var introAllTextViews: List<TextView> = emptyList()
+    private var introAccentDrawables: List<GradientDrawable> = emptyList()
+    private var introAccentViews: List<TextView> = emptyList()  // 需要设置 accent text color 的 TextView
+    private var introSemiBgViews: List<View> = emptyList()       // 需要半透明 accent 背景的 View
+    private var introUrlTv: TextView? = null
+
     private data class ThemedViews(
         val backBtn: TextView, val titleText: TextView,
         val refreshBtn: TextView, val closeBtn: TextView
     )
     private var themedViews: ThemedViews? = null
-    private var introTextViews: List<TextView> = emptyList()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -153,18 +161,34 @@ class CommunityFragment : Fragment() {
         root.addView(contentContainer)
 
         applyNativeTheme(backBtn!!, titleText, refreshBtn!!, closeBtn!!)
-        applyIntroFonts(ctx)
 
         return root
     }
 
-    /** 介绍页所有文字统一应用用户字体偏好 */
-    private fun applyIntroFonts(ctx: android.content.Context) {
-        if (introTextViews.isNotEmpty()) {
-            FontHelper.applyFont(ctx, *introTextViews.toTypedArray())
+    /** 重新应用介绍页的字体和主题色（onResume 时调用） */
+    private fun applyIntroTheme(ctx: android.content.Context) {
+        val tf = FontHelper.currentTypeface(ctx) ?: Typeface.DEFAULT
+        introAllTextViews.forEach { it.typeface = tf }
+        val accent = FontHelper.currentAccentColor(ctx)
+        introAccentViews.forEach { it.setTextColor(accent) }
+        val semiAccent = Color.argb(24, Color.red(accent), Color.green(accent), Color.blue(accent))
+        introSemiBgViews.forEach { (it.background as? GradientDrawable)?.setColor(semiAccent) }
+        introAccentDrawables.forEach { d ->
+            d.setStroke(dp(2), accent)
+            if (d === introAccentDrawables.firstOrNull()) { /* number circle has 1dp stroke, handled below */ }
         }
+        // number circles: stroke width 1dp
+        introAccentDrawables.forEachIndexed { i, d ->
+            if (i < introAccentDrawables.size - 2) { // circles are first 6
+                d.setStroke(dp(1), accent)
+            }
+        }
+        // URL tv uses monospace font, apply custom
+        introUrlTv?.typeface = Typeface.MONOSPACE
+        introUrlTv?.setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
     }
 
+    @SuppressLint("SetTextI18n")
     private fun buildIntroView(ctx: android.content.Context): View {
         val scroll = ScrollView(ctx).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -184,13 +208,17 @@ class CommunityFragment : Fragment() {
             )
         }
 
-        val accentColor = ContextCompat.getColor(ctx, R.color.color_primary)
+        val accentColor = FontHelper.currentAccentColor(ctx)
         val textColor = ContextCompat.getColor(ctx, R.color.text_primary)
         val dimColor = ContextCompat.getColor(ctx, R.color.text_secondary)
         val cardBg = ContextCompat.getColor(ctx, R.color.bg_top_bar)
         val dividerColor = ContextCompat.getColor(ctx, R.color.bg_divider)
+        val semiAccent = Color.argb(24, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
 
-        val tvList = mutableListOf<TextView>()
+        val allTvs = mutableListOf<TextView>()
+        val accentTvs = mutableListOf<TextView>()
+        val accentDrawables = mutableListOf<GradientDrawable>()
+        val semiBgViews = mutableListOf<View>()
 
         // 标题
         val titleTv = TextView(ctx).apply {
@@ -201,10 +229,9 @@ class CommunityFragment : Fragment() {
             typeface = Typeface.DEFAULT_BOLD
             setPadding(0, 0, 0, dp(6))
         }
-        tvList.add(titleTv)
+        allTvs.add(titleTv); accentTvs.add(titleTv)
         container.addView(titleTv)
 
-        // 副标题
         val subTv = TextView(ctx).apply {
             text = "上传你的独立游戏作品，即可领取 Tap 官方 1000 REP 奖励金"
             setTextColor(dimColor)
@@ -212,10 +239,9 @@ class CommunityFragment : Fragment() {
             gravity = Gravity.CENTER
             setPadding(dp(8), 0, dp(8), dp(20))
         }
-        tvList.add(subTv)
+        allTvs.add(subTv)
         container.addView(subTv)
 
-        // 步骤数据
         data class Step(val num: Int, val text: String)
         val steps = listOf(
             Step(1, "进入 Sulor Game 网站，准备上传你的游戏作品"),
@@ -225,6 +251,8 @@ class CommunityFragment : Fragment() {
             Step(5, "点击「提交审核」，可联系站长加速审核"),
             Step(6, "审核通过后即可领取价值 Tap 官方 1000 REP 的奖励金 🎉")
         )
+
+        val circleDrawables = mutableListOf<GradientDrawable>()
 
         steps.forEach { step ->
             val card = LinearLayout(ctx).apply {
@@ -239,10 +267,18 @@ class CommunityFragment : Fragment() {
                     setColor(cardBg)
                     setStroke(dp(2), accentColor)
                     cornerRadius = dp(10).toFloat()
+                    accentDrawables.add(this)
                 }
             }
 
-            // 编号圆圈
+            val circleBg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(semiAccent)
+                setStroke(dp(1), accentColor)
+                accentDrawables.add(this)
+                circleDrawables.add(this)
+            }
+
             val numCircle = TextView(ctx).apply {
                 text = "${step.num}"
                 setTextColor(accentColor)
@@ -250,20 +286,12 @@ class CommunityFragment : Fragment() {
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
                 val size = dp(26)
-                layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                    marginEnd = dp(12)
-                    topMargin = dp(0)
-                }
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(0x1800C4CD)
-                    setStroke(dp(1), accentColor)
-                }
+                layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = dp(12) }
+                background = circleBg
             }
-            tvList.add(numCircle)
+            allTvs.add(numCircle); accentTvs.add(numCircle)
             card.addView(numCircle)
 
-            // 步骤文字（可长按复制）
             val stepTv = TextView(ctx).apply {
                 text = step.text
                 setTextColor(textColor)
@@ -272,9 +300,8 @@ class CommunityFragment : Fragment() {
                 setTextIsSelectable(true)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            tvList.add(stepTv)
+            allTvs.add(stepTv)
             card.addView(stepTv)
-
             container.addView(card)
         }
 
@@ -288,11 +315,14 @@ class CommunityFragment : Fragment() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(4); bottomMargin = dp(16) }
             background = GradientDrawable().apply {
-                setColor(0x1800C4CD)
+                setColor(semiAccent)
                 setStroke(dp(1), accentColor)
                 cornerRadius = dp(10).toFloat()
+                accentDrawables.add(this)
             }
         }
+        semiBgViews.add(urlCard)
+
         val urlLabel = TextView(ctx).apply {
             text = "🌐 官网地址（填写用）"
             setTextColor(accentColor)
@@ -300,8 +330,9 @@ class CommunityFragment : Fragment() {
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, dp(6))
         }
-        tvList.add(urlLabel)
+        allTvs.add(urlLabel); accentTvs.add(urlLabel)
         urlCard.addView(urlLabel)
+
         val urlTv = TextView(ctx).apply {
             text = COMMUNITY_URL
             setTextColor(textColor)
@@ -311,8 +342,9 @@ class CommunityFragment : Fragment() {
             setTextIsSelectable(true)
             setPadding(dp(8), dp(6), dp(8), dp(6))
         }
-        tvList.add(urlTv)
+        allTvs.add(urlTv); introUrlTv = urlTv
         urlCard.addView(urlTv)
+
         val urlHint = TextView(ctx).apply {
             text = "↑ 长按可复制"
             setTextColor(dimColor)
@@ -320,7 +352,7 @@ class CommunityFragment : Fragment() {
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
         }
-        tvList.add(urlHint)
+        allTvs.add(urlHint)
         urlCard.addView(urlHint)
         container.addView(urlCard)
 
@@ -333,7 +365,7 @@ class CommunityFragment : Fragment() {
             setPadding(0, 0, 0, dp(18))
             setTextIsSelectable(true)
         }
-        tvList.add(tipTv)
+        allTvs.add(tipTv)
         container.addView(tipTv)
 
         // 分隔线
@@ -344,7 +376,7 @@ class CommunityFragment : Fragment() {
             setBackgroundColor(dividerColor)
         })
 
-        // 入口：logo + 名称（可点击进入网站）
+        // 入口
         val entryWrap = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -355,6 +387,7 @@ class CommunityFragment : Fragment() {
                 setColor(cardBg)
                 setStroke(dp(2), accentColor)
                 cornerRadius = dp(14).toFloat()
+                accentDrawables.add(this)
             }
             setOnClickListener { enterWebsite() }
         }
@@ -371,7 +404,7 @@ class CommunityFragment : Fragment() {
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
         }
-        tvList.add(entryName)
+        allTvs.add(entryName); accentTvs.add(entryName)
         entryWrap.addView(entryName)
         val entryHint = TextView(ctx).apply {
             text = "点击进入网站"
@@ -380,13 +413,17 @@ class CommunityFragment : Fragment() {
             gravity = Gravity.CENTER
             setPadding(0, dp(2), 0, 0)
         }
-        tvList.add(entryHint)
+        allTvs.add(entryHint)
         entryWrap.addView(entryHint)
 
         container.addView(entryWrap)
         scroll.addView(container)
 
-        introTextViews = tvList
+        introAllTextViews = allTvs
+        introAccentViews = accentTvs
+        introAccentDrawables = accentDrawables
+        introSemiBgViews = semiBgViews
+
         return scroll
     }
 
@@ -432,7 +469,8 @@ class CommunityFragment : Fragment() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    updateBackButton()
+                    backBtn?.isEnabled = true
+                    backBtn?.alpha = 1.0f
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                     val url = request.url.toString()
@@ -450,13 +488,7 @@ class CommunityFragment : Fragment() {
         }
     }
 
-    private fun updateBackButton() {
-        backBtn?.isEnabled = true
-        backBtn?.alpha = 1.0f
-    }
-
     fun canGoBack(): Boolean = inWebMode && (webView?.canGoBack() ?: false)
-
     fun goBack() { webView?.goBack() }
 
     fun destroyWebView() {
@@ -470,12 +502,12 @@ class CommunityFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        val ctx = context ?: return
         themedViews?.let { v ->
-            val ctx = context ?: return
             FontHelper.applyTopBarStyle(ctx, v.backBtn, v.refreshBtn)
             FontHelper.applyFont(ctx, v.titleText, v.closeBtn)
         }
-        context?.let { applyIntroFonts(it) }
+        applyIntroTheme(ctx)
         webView?.onResume()
     }
 
