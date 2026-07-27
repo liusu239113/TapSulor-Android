@@ -513,7 +513,7 @@
     // -----------------------------------------------------------------------
     // Diagnostic flags
     // -----------------------------------------------------------------------
-    window.__makerBridgeVersion = "1.2.2";
+    window.__makerBridgeVersion = "1.2.3";
     window.__makerBridgeMethods = [
       "startRecording", "stopRecording", "pauseRecording", "resumeRecording", "getRecordingState",
       "recording-request-start", "recording-request-stop",
@@ -538,8 +538,13 @@
         var ua = navigator.userAgent;
         var hasElectron = ua.indexOf("Electron") >= 0;
         var uaTruncated = ua.length > 80 ? ua.substring(0, 80) + "..." : ua;
+        var inIframe = false;
+        try { inIframe = window.self !== window.top; } catch (_) { inIframe = true; }
+        var host = location.hostname || "(unknown)";
+        var frameTag = inIframe ? " [IFRAME]" : " [TOP]";
         var html = "<div style='font-size:13px;font-weight:bold;margin-bottom:4px;color:#fff'>" +
           "MakerBridge v" + window.__makerBridgeVersion + "</div>" +
+          "<div>host: <span style='color:#66ccff'>" + host + frameTag + "</span></div>" +
           "<div>UA: <span style='color:" + (hasElectron ? "#00ff88" : "#ff4444") + "'>" +
           (hasElectron ? "OK (Electron)" : "NO Electron") + "</span></div>" +
           "<div style='color:#aaa;margin-bottom:4px'>" + uaTruncated + "</div>" +
