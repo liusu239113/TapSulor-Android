@@ -31,6 +31,8 @@ import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -481,14 +483,40 @@ class MakerWebFragment : Fragment() {
         }
 
         // === 权限代理:自动允许屏幕录制/通知/地理位置等内容权限 ===
-        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+        session.permissionDelegate = object : PermissionDelegate {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
-                perm: GeckoSession.PermissionDelegate.ContentPermission
+                perm: PermissionDelegate.ContentPermission
             ): GeckoResult<Int> {
-                // 自动允许所有内容权限(录屏/通知/地理位置/XR/自动播放等)
                 Log.d(TAG, "onContentPermissionRequest: perm=${perm.permission} uri=${perm.uri}")
-                return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
+                return GeckoResult.fromValue(PermissionDelegate.ContentPermission.VALUE_ALLOW)
+            }
+
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<PermissionDelegate.MediaSource>,
+                audio: Array<PermissionDelegate.MediaSource>,
+                callback: PermissionDelegate.MediaCallback
+            ) {
+                Log.d(TAG, "onMediaPermissionRequest: uri=$uri video=${video.map { it.name + "/" + it.source }} audio=${audio.map { it.name + "/" + it.source }}")
+                // Prefer screen source for video; fall back to first video source
+                val videoSource = video.firstOrNull { it.source == PermissionDelegate.MediaSource.SOURCE_SCREEN }
+                    ?: video.firstOrNull()
+                // Prefer audio capture for audio; fall back to mic
+                val audioSource = audio.firstOrNull { it.source == PermissionDelegate.MediaSource.SOURCE_AUDIOCAPTURE }
+                    ?: audio.firstOrNull()
+                callback.grant(videoSource, audioSource)
+                Log.d(TAG, "onMediaPermissionRequest: granted video=${videoSource?.name} audio=${audioSource?.name}")
+            }
+
+            override fun onAndroidPermissionsRequest(
+                session: GeckoSession,
+                permissions: Array<String>,
+                callback: PermissionDelegate.Callback
+            ) {
+                Log.d(TAG, "onAndroidPermissionsRequest: ${permissions.toList()}")
+                callback.grant()
             }
         }
     }
@@ -1056,7 +1084,19 @@ class MakerWebFragment : Fragment() {
             synchronized(this) {
                 runtime?.let { return it }
 
+                val configFile = File(context.applicationContext.filesDir, "geckoview-config.yaml")
+                try {
+                    val assets = context.applicationContext.assets
+                    assets.open("geckoview-config.yaml").use { input ->
+                        FileOutputStream(configFile).use { output -> input.copyTo(output) }
+                    }
+                    Log.i(TAG, "GeckoView config written to ${configFile.absolutePath}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to write geckoview config", e)
+                }
+
                 val settings = GeckoRuntimeSettings.Builder()
+                    .configFilePath(configFile.absolutePath)
                     .fissionEnabled(true)
                     .javaScriptEnabled(true)
                     .remoteDebuggingEnabled(true)
@@ -1067,6 +1107,26 @@ class MakerWebFragment : Fragment() {
 
                 val r = GeckoRuntime.create(context.applicationContext, settings)
                 runtime = r
+
+                // Register WebExtension for JS bridge (electronAPI + recording stubs)
+                try {
+                    val extController = r.webExtensionController
+                    val extLocation = "resource://android/assets/web_extensions/makerbridge/"
+                    extController.ensureBuiltIn(extLocation, "makerbridge@taptapgain")?.accept({ ext ->
+                        Log.i(TAG, "WebExtension registered: ${ext?.location}")
+                        ext?.setMessageDelegate(object : WebExtension.MessageDelegate {
+                            override fun onMessage(nativeApp: String, msg: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
+                                Log.d(TAG, "Native message: nativeApp=$nativeApp msg=$msg")
+                                return GeckoResult.fromValue(mapOf("ok" to false, "error" to "not_implemented") as Any)
+                            }
+                        }, "makerbridge")
+                    }, { throwable ->
+                        Log.w(TAG, "WebExtension registration failed", throwable)
+                    })
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to register WebExtension", e)
+                }
+
                 Log.i(TAG, "GeckoRuntime created (GeckoView ${BuildConfig.VERSION_NAME})")
                 return r
             }

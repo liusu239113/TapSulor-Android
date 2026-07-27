@@ -1,0 +1,12 @@
+﻿preferences:
+  media.getusermedia.screensharing.enabled: true
+  media.getusermedia.screensharing.allowed_domains: "maker.taptap.cn,www.taptap.cn"
+  media.getusermedia.audiocapture.enabled: true
+  media.getusermedia.noise_suppression: true
+  media.getusermedia.echo_cancellation: true
+  dom.media.recorder.enabled: true
+  dom.media.mediasession.enabled: true
+  media.navigator.permission.disabled: false
+  media.webrtc.capture.enabled: true
+  dom.display_capture.enabled: true
+  media.getdisplaymedia.enabled: true
