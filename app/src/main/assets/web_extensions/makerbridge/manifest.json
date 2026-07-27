@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "MakerBridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Android bridge for TapTap Maker",
   "content_scripts": [
     {
@@ -13,7 +13,9 @@
       ],
       "js": ["content.js"],
       "run_at": "document_start",
-      "all_frames": true
+      "all_frames": true,
+      "world": "MAIN",
+      "match_about_blank": true
     }
   ]
 }

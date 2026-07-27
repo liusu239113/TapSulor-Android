@@ -1,55 +1,22 @@
-// MakerBridge — GeckoView content script that exposes an Electron-like IPC shim
-// to maker.taptap.cn so the web app's recording controls (which expect the desktop
-// Electron client) don't fail with "is not supported by this user agent".
+// MakerBridge — runs directly in the PAGE WORLD via manifest "world": "MAIN".
 //
-// ⚠️ ZERO-PRIVILEGE INJECTION (required for GeckoView)
-// ----------------------------------------------------
-// GeckoView content scripts run in an isolated sandbox where Components.utils /
-// Cu / exportFunction / cloneInto / Cu.createObjectIn are NOT available (those
-// are Firefox-DESKTOP-only chrome-privileged APIs). Using any of them throws
-// ReferenceError at the top of the script and the whole IIFE dies silently —
-// which is why every prior attempt failed to inject anything.
+// Because "world": "MAIN" is set in manifest.json, this script executes in the
+// page's own JavaScript context (same principal, same globals). No need for
+// wrappedJSObject.eval() or <script> tag injection — those were workarounds
+// for the old content-script-world isolation and were being blocked by CSP.
 //
-// The only cross-realm primitive that IS reliably available is
-// `window.wrappedJSObject`, which gives us the page's unwrapped window, and
-// `wrappedJSObject.eval(code)` which executes plain source directly in the
-// PAGE realm/page principal. So we build the entire bridge as a self-
-// contained plain-JS string and eval it once on the page window. The bridge
-// code runs natively in the page world, sees page globals directly, and the
-// page's own scripts see window.electronAPI etc. without any Xray wrapping.
-//
-// As belt-and-suspenders we ALSO inject a <script> tag with the same source,
-// which runs in the page world too (CSP-permitting), so even if eval-on-
-// wrappedJSObject ever behaves unexpectedly the script tag covers us.
+// With world:MAIN + all_frames:true, this code runs in EVERY frame including
+// cross-origin iframes (the game preview at *.spark.xd.com), which is where
+// the recording getDisplayMedia() call actually happens.
 
 (function () {
   "use strict";
 
-  // Single-instance guard in the CONTENT world (cheap bail-out if WebExtension
-  // runs the script twice in the same frame).
-  if (window.__makerBridgeContentLoaded) return;
-  window.__makerBridgeContentLoaded = true;
+  // Single-instance guard (page world).
+  if (window.__makerBridgeInjected) return;
+  window.__makerBridgeInjected = true;
 
-  // Access the page's real window object (bypass Xray wrapper). This is the
-  // ONLY GeckoView-specific primitive we rely on, and it is documented to be
-  // available in content scripts.
-  var pageWindow = window.wrappedJSObject || window;
-
-  // ---------------------------------------------------------------------------
-  // Bridge source — runs entirely in the PAGE realm. Must NOT reference any
-  // content-script-side variables; only page globals (window, Object, Promise,
-  // setTimeout, fetch, navigator, document, CustomEvent, Error, DOMException...).
-  //
-  // We define it as a function and use .toString() so we can write normal JS
-  // without hand-escaping a giant string literal.
-  // ---------------------------------------------------------------------------
-  function installBridge() {
-    // Single-instance guard in the PAGE world (prevents double-init from both
-    // eval() and the <script> fallback).
-    if (window.__makerBridgeInjected) return;
-    window.__makerBridgeInjected = true;
-
-    var APP_VERSION = "1.0.4";
+  var APP_VERSION = "1.0.4";
 
     // -----------------------------------------------------------------------
     // UA override (JS-side only, does NOT affect HTTP User-Agent header).
@@ -522,51 +489,6 @@
     ];
 
     // -----------------------------------------------------------------------
-    // Floating debug panel (visible in release APKs for screenshot debugging).
-    // -----------------------------------------------------------------------
-    function createDebugPanel() {
-      try {
-        var panel = document.createElement("div");
-        panel.id = "maker-debug-panel";
-        panel.style.cssText = [
-          "position:fixed", "bottom:12px", "right:12px", "z-index:999999999",
-          "background:rgba(0,0,0,0.88)", "color:#00ff88", "font-family:monospace",
-          "font-size:11px", "line-height:1.6", "padding:8px 10px", "border-radius:8px",
-          "max-width:320px", "word-break:break-all", "pointer-events:auto",
-          "border:1px solid #00ff88", "box-shadow:0 2px 12px rgba(0,0,0,0.6)",
-        ].join(";");
-        var ua = navigator.userAgent;
-        var hasElectron = ua.indexOf("Electron") >= 0;
-        var uaTruncated = ua.length > 80 ? ua.substring(0, 80) + "..." : ua;
-        var inIframe = false;
-        try { inIframe = window.self !== window.top; } catch (_) { inIframe = true; }
-        var host = location.hostname || "(unknown)";
-        var frameTag = inIframe ? " [IFRAME]" : " [TOP]";
-        var html = "<div style='font-size:13px;font-weight:bold;margin-bottom:4px;color:#fff'>" +
-          "MakerBridge v" + window.__makerBridgeVersion + "</div>" +
-          "<div>host: <span style='color:#66ccff'>" + host + frameTag + "</span></div>" +
-          "<div>UA: <span style='color:" + (hasElectron ? "#00ff88" : "#ff4444") + "'>" +
-          (hasElectron ? "OK (Electron)" : "NO Electron") + "</span></div>" +
-          "<div style='color:#aaa;margin-bottom:4px'>" + uaTruncated + "</div>" +
-          "<div>electronAPI: " + (typeof window.electronAPI === "object" ? "YES" : "NO") + "</div>" +
-          "<div>ipcRenderer: " + (typeof (window.electronAPI && window.electronAPI.ipcRenderer) === "object" ? "YES" : "NO") + "</div>" +
-          "<div>getDisplayMedia: " + (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia ? "stubbed" : "N/A") + "</div>" +
-          "<div style='margin-top:6px;color:#888;font-size:10px'>tap to hide</div>";
-        panel.innerHTML = html;
-        panel.onclick = function () { panel.style.display = "none"; };
-        (document.body || document.documentElement).appendChild(panel);
-        console.log("[MakerBridge] Debug panel created");
-      } catch (e) {
-        console.warn("[MakerBridge] Debug panel failed:", e);
-      }
-    }
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", createDebugPanel);
-    } else {
-      createDebugPanel();
-    }
-
-    // -----------------------------------------------------------------------
     // Dispatch readiness events (with retries for late-init page code).
     // -----------------------------------------------------------------------
     function fireEvent(name) {
@@ -594,41 +516,6 @@
     setTimeout(announce, 200);
     setTimeout(announce, 1000);
     setTimeout(announce, 3000);
-  }
 
-  // ---------------------------------------------------------------------------
-  // Inject path 1: eval the bridge source directly in the page realm via
-  // wrappedJSObject.eval — this is the primary mechanism.
-  // ---------------------------------------------------------------------------
-  var bridgeSource = "(" + installBridge.toString() + ")();";
-  try {
-    pageWindow.eval(bridgeSource);
-    console.log("[MakerBridge] Bridge source evaled into page realm (size=" + bridgeSource.length + ").");
-  } catch (e) {
-    console.error("[MakerBridge] wrappedJSObject.eval failed:", e);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Inject path 2: <script> tag belt-and-suspenders. CSP on maker.taptap.cn
-  // currently allows inline script injection for extension-created nodes
-  // (WebExtension-created <script> is treated as privileged). Even if CSP
-  // blocks it, path 1 has already done the job.
-  // ---------------------------------------------------------------------------
-  try {
-    var doc = window.document;
-    if (doc && doc.documentElement) {
-      var script = doc.createElement("script");
-      script.textContent = bridgeSource;
-      script.setAttribute("data-makerbridge", "1");
-      // Insert at the earliest possible point.
-      (doc.head || doc.documentElement).appendChild(script);
-      // Remove the node after execution to keep DOM clean.
-      try { script.parentNode && script.parentNode.removeChild(script); } catch (_) {}
-    }
-  } catch (e) {
-    // Not fatal — path 1 is the primary.
-    console.warn("[MakerBridge] <script> injection skipped:", e);
-  }
-
-  console.log("[MakerBridge] Content script initialized (document_start, zero-privilege).");
+    console.log("[MakerBridge] v" + window.__makerBridgeVersion + " initialized (world:MAIN, all_frames).");
 })();
