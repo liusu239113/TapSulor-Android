@@ -263,8 +263,13 @@ class MainActivity : AppCompatActivity() {
             switchToTab(R.id.nav_home)
             return
         }
-        // 非主页 Tab（社区）：直接回主页
-        if (currentTabId != R.id.nav_home) {
+        // 社区 Tab：先在 WebView 历史中回退，退无可退再回主页
+        if (currentTabId == R.id.nav_community) {
+            val cf = communityFragment
+            if (cf != null && cf.canGoBack()) {
+                cf.goBack()
+                return
+            }
             switchToTab(R.id.nav_home)
             return
         }
