@@ -495,27 +495,25 @@ class MakerWebFragment : Fragment() {
             override fun onMediaPermissionRequest(
                 session: GeckoSession,
                 uri: String,
-                video: Array<PermissionDelegate.MediaSource>,
-                audio: Array<PermissionDelegate.MediaSource>,
+                video: Array<PermissionDelegate.MediaSource>?,
+                audio: Array<PermissionDelegate.MediaSource>?,
                 callback: PermissionDelegate.MediaCallback
             ) {
-                Log.d(TAG, "onMediaPermissionRequest: uri=$uri video=${video.map { it.name + "/" + it.source }} audio=${audio.map { it.name + "/" + it.source }}")
-                // Prefer screen source for video; fall back to first video source
-                val videoSource = video.firstOrNull { it.source == PermissionDelegate.MediaSource.SOURCE_SCREEN }
-                    ?: video.firstOrNull()
-                // Prefer audio capture for audio; fall back to mic
-                val audioSource = audio.firstOrNull { it.source == PermissionDelegate.MediaSource.SOURCE_AUDIOCAPTURE }
-                    ?: audio.firstOrNull()
+                Log.d(TAG, "onMediaPermissionRequest: uri=$uri video=${video?.map { it.name + "/" + it.source }} audio=${audio?.map { it.name + "/" + it.source }}")
+                val videoSource = video?.firstOrNull { it.source == PermissionDelegate.MediaSource.SOURCE_SCREEN }
+                    ?: video?.firstOrNull()
+                val audioSource = audio?.firstOrNull { it.source == PermissionDelegate.MediaSource.SOURCE_AUDIOCAPTURE }
+                    ?: audio?.firstOrNull()
                 callback.grant(videoSource, audioSource)
                 Log.d(TAG, "onMediaPermissionRequest: granted video=${videoSource?.name} audio=${audioSource?.name}")
             }
 
             override fun onAndroidPermissionsRequest(
                 session: GeckoSession,
-                permissions: Array<String>,
+                permissions: Array<String>?,
                 callback: PermissionDelegate.Callback
             ) {
-                Log.d(TAG, "onAndroidPermissionsRequest: ${permissions.toList()}")
+                Log.d(TAG, "onAndroidPermissionsRequest: ${permissions?.toList()}")
                 callback.grant()
             }
         }
