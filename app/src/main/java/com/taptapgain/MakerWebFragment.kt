@@ -480,39 +480,15 @@ class MakerWebFragment : Fragment() {
             }
         }
 
-        // === 权限代理:处理摄像头/麦克风/屏幕录制权限请求 ===
+        // === 权限代理:自动允许屏幕录制/通知/地理位置等内容权限 ===
         session.permissionDelegate = object : GeckoSession.PermissionDelegate {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: GeckoSession.PermissionDelegate.ContentPermission
             ): GeckoResult<Int> {
-                // 自动允许地理位置/通知/录屏/XR等内容权限(保持与浏览器一致)
+                // 自动允许所有内容权限(录屏/通知/地理位置/XR/自动播放等)
                 Log.d(TAG, "onContentPermissionRequest: perm=${perm.permission} uri=${perm.uri}")
                 return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
-            }
-
-            override fun onMediaPermissionRequest(
-                session: GeckoSession,
-                uri: String,
-                video: Array<GeckoSession.PermissionDelegate.MediaSource>,
-                audio: Array<GeckoSession.PermissionDelegate.MediaSource>,
-                callback: GeckoSession.PermissionDelegate.MediaCallback
-            ) {
-                // 自动允许摄像头/麦克风/屏幕录制(游戏分享/录屏场景),优先选第一个可用源
-                Log.d(TAG, "onMediaPermissionRequest: video=${video.size} audio=${audio.size}")
-                val videoSrc = video.firstOrNull()
-                val audioSrc = audio.firstOrNull()
-                callback.grant(videoSrc, audioSrc)
-            }
-
-            override fun onAndroidPermissionsRequest(
-                session: GeckoSession,
-                permissions: Array<String>,
-                callback: GeckoSession.PermissionDelegate.Callback
-            ) {
-                // 自动通过 Android 运行时权限请求(所需权限均已在 Manifest 声明)
-                Log.d(TAG, "onAndroidPermissionsRequest: ${permissions.joinToString()}")
-                callback.grant()
             }
         }
     }
