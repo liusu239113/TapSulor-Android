@@ -205,7 +205,7 @@ class CommunityFragment : Fragment() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             )
             isFillViewport = true; setBackgroundColor(pageBg)
-            setPadding(dp(16), dp(20), dp(16), dp(48))
+            setPadding(dp(16), dp(20), dp(16), dp(80))
             clipToPadding = false
         }
 
@@ -251,10 +251,10 @@ class CommunityFragment : Fragment() {
             }
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP
-                setPadding(dp(14), dp(14), dp(14), dp(14))
+                setPadding(dp(16), dp(16), dp(16), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(10) }
+                ).apply { bottomMargin = dp(12) }
                 background = bd
             }
             val nbd = GradientDrawable().apply {
@@ -263,15 +263,15 @@ class CommunityFragment : Fragment() {
                 numBoxBgs.add(this)
             }
             val numTv = makeTv("${s.n}", 14f, accent, bold = true).apply {
-                val sz = dp(28)
-                layoutParams = LinearLayout.LayoutParams(sz, sz).apply { marginEnd = dp(12) }
+                val sz = dp(30)
+                layoutParams = LinearLayout.LayoutParams(sz, sz).apply { marginEnd = dp(14); topMargin = dp(2) }
                 background = nbd
             }
             stepNumTvs.add(numTv)
             row.addView(numTv)
             val txtTv = makeTv(s.t, 14f, textPri, sel = true).apply {
                 gravity = Gravity.TOP or Gravity.START
-                setLineSpacing(dp(6).toFloat(), 1.15f)
+                setLineSpacing(dp(8).toFloat(), 1.3f); setPadding(0, 0, 0, dp(4))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
             stepTextTvs.add(txtTv)
@@ -335,7 +335,7 @@ class CommunityFragment : Fragment() {
         entry.addView(ImageView(ctx).apply {
             setImageResource(R.drawable.sulor_logo)
             val sz = dp(72)
-            layoutParams = LinearLayout.LayoutParams(sz, sz).apply { bottomMargin = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(sz, sz).apply { bottomMargin = dp(12) }
             scaleType = ImageView.ScaleType.CENTER_CROP
         })
         tvEntryName = makeTv("Sulor Game", 16f, accent, bold = true).also { entry.addView(it) }
