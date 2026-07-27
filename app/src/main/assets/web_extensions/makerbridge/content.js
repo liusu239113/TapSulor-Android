@@ -2,571 +2,464 @@
 // to maker.taptap.cn so the web app's recording controls (which expect the desktop
 // Electron client) don't fail with "is not supported by this user agent".
 //
-// Injection strategy (robust against GeckoView Xray compartment isolation):
-//   1. Build every object DIRECTLY in the page compartment via Cu.createObjectIn().
-//   2. Export every function individually via exportFunction() — the recommended
-//      Gecko way to expose callable functions cross-compartment.
-//   3. Return page-realm Promises / plain objects (cloneInto) so .then() and
-//      property access work without Xray wrapping.
-//   4. Provide BOTH window.electronAPI AND window.require('electron') entry points.
-//   5. Stub navigator.mediaDevices.getDisplayMedia unconditionally so any web
-//      fallback path also resolves cleanly instead of throwing Gecko's
-//      "getDisplayMedia is not supported by this user agent" DOMException.
+// ⚠️ ZERO-PRIVILEGE INJECTION (required for GeckoView)
+// ----------------------------------------------------
+// GeckoView content scripts run in an isolated sandbox where Components.utils /
+// Cu / exportFunction / cloneInto / Cu.createObjectIn are NOT available (those
+// are Firefox-DESKTOP-only chrome-privileged APIs). Using any of them throws
+// ReferenceError at the top of the script and the whole IIFE dies silently —
+// which is why every prior attempt failed to inject anything.
 //
-// CSP: WebExtension content scripts with exportFunction/cloneInto are CSP-safe
-// (they do not inject inline <script> tags).
+// The only cross-realm primitive that IS reliably available is
+// `window.wrappedJSObject`, which gives us the page's unwrapped window, and
+// `wrappedJSObject.eval(code)` which executes plain source directly in the
+// PAGE realm/page principal. So we build the entire bridge as a self-
+// contained plain-JS string and eval it once on the page window. The bridge
+// code runs natively in the page world, sees page globals directly, and the
+// page's own scripts see window.electronAPI etc. without any Xray wrapping.
+//
+// As belt-and-suspenders we ALSO inject a <script> tag with the same source,
+// which runs in the page world too (CSP-permitting), so even if eval-on-
+// wrappedJSObject ever behaves unexpectedly the script tag covers us.
 
 (function () {
   "use strict";
 
-  // Single-instance guard per window/frame.
-  if (window.__makerBridgeInjected) return;
-  window.__makerBridgeInjected = true;
+  // Single-instance guard in the CONTENT world (cheap bail-out if WebExtension
+  // runs the script twice in the same frame).
+  if (window.__makerBridgeContentLoaded) return;
+  window.__makerBridgeContentLoaded = true;
 
-  // Access the page's real window object (bypass Xray wrapper).
-  /** @type {Window} */
+  // Access the page's real window object (bypass Xray wrapper). This is the
+  // ONLY GeckoView-specific primitive we rely on, and it is documented to be
+  // available in content scripts.
   var pageWindow = window.wrappedJSObject || window;
 
-  // Shortcut to Components.utils (available in GeckoView content scripts).
-  var Cu = Components.utils;
-
   // ---------------------------------------------------------------------------
-  // Helpers
+  // Bridge source — runs entirely in the PAGE realm. Must NOT reference any
+  // content-script-side variables; only page globals (window, Object, Promise,
+  // setTimeout, fetch, navigator, document, CustomEvent, Error, DOMException...).
+  //
+  // We define it as a function and use .toString() so we can write normal JS
+  // without hand-escaping a giant string literal.
   // ---------------------------------------------------------------------------
+  function installBridge() {
+    // Single-instance guard in the PAGE world (prevents double-init from both
+    // eval() and the <script> fallback).
+    if (window.__makerBridgeInjected) return;
+    window.__makerBridgeInjected = true;
 
-  /**
-   * Define a function property on `target` (a page-compartment object) so that
-   * calling the function from page JS runs `fn` (which lives in the content-
-   * script world) but returns values in the page compartment.
-   */
-  function defineFn(target, name, fn) {
-    try {
-      // exportFunction creates a cross-compartment wrapper; property is defined
-      // directly on the target via defineAs.
-      exportFunction(fn, target, { defineAs: name });
-    } catch (e) {
-      // Fallback (shouldn't happen on GV153): assign a Cu.exportFunction-ed wrapper.
-      try {
-        Object.defineProperty(target, name, {
-          value: exportFunction(fn, target),
-          writable: true,
-          configurable: true,
-          enumerable: true,
-        });
-      } catch (e2) {
-        console.warn("[MakerBridge] defineFn failed for", name, e2);
-      }
+    var APP_VERSION = "1.0.4";
+
+    function define(obj, name, value) {
+      Object.defineProperty(obj, name, {
+        value: value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
     }
-  }
 
-  /** Clone a plain object/array into the page compartment. */
-  function clone(v) {
-    if (v === null || typeof v !== "object") return v;
-    try {
-      return cloneInto(v, pageWindow);
-    } catch (e) {
-      return v;
+    // -----------------------------------------------------------------------
+    // Recording response factories (plain objects, resolved in native Promise)
+    // -----------------------------------------------------------------------
+    function recStartResp() {
+      return {
+        ok: true,
+        state: "recording",
+        streamId: "native-" + Date.now(),
+        duration: 0,
+        filePath: null,
+      };
     }
-  }
-
-  /** Create a page-realm Promise that resolves to `value` (already page-cloned). */
-  function resolvePromise(value) {
-    var cloned = clone(value);
-    try {
-      return pageWindow.Promise.resolve(cloned);
-    } catch (e) {
-      // Should never happen — Promise is a page global.
-      return Promise.resolve(cloned);
+    function recStopResp() {
+      return { ok: true, state: "stopped", filePath: null, duration: 0 };
     }
-  }
+    function recPauseResp() {
+      return { ok: true, state: "paused" };
+    }
+    function recResumeResp() {
+      return {
+        ok: true,
+        state: "recording",
+        streamId: "native-" + Date.now(),
+        duration: 0,
+      };
+    }
+    function recStatusResp() {
+      return { ok: true, state: "inactive", duration: 0 };
+    }
 
-  // ---------------------------------------------------------------------------
-  // Recording response factories (plain objects, cloned into page at call time)
-  // ---------------------------------------------------------------------------
-  function recStartResp() {
-    return {
-      ok: true,
-      state: "recording",
-      streamId: "native-" + Date.now(),
-      duration: 0,
-      filePath: null,
-    };
-  }
-  function recStopResp() {
-    return { ok: true, state: "stopped", filePath: null, duration: 0 };
-  }
-  function recPauseResp() {
-    return { ok: true, state: "paused" };
-  }
-  function recResumeResp() {
-    return {
-      ok: true,
-      state: "recording",
-      streamId: "native-" + Date.now(),
-      duration: 0,
-    };
-  }
-  function recStatusResp() {
-    return { ok: true, state: "inactive", duration: 0 };
-  }
+    function routeChannel(channel) {
+      var ch = typeof channel === "string" ? channel.toLowerCase() : "";
+      console.log("[MakerBridge] routeChannel:", channel);
+      if (ch.indexOf("start") >= 0) return Promise.resolve(recStartResp());
+      if (ch.indexOf("stop") >= 0) return Promise.resolve(recStopResp());
+      if (ch.indexOf("pause") >= 0) return Promise.resolve(recPauseResp());
+      if (ch.indexOf("resume") >= 0) return Promise.resolve(recResumeResp());
+      if (ch.indexOf("state") >= 0 || ch.indexOf("status") >= 0)
+        return Promise.resolve(recStatusResp());
+      if (ch.indexOf("recording") >= 0) return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true });
+    }
 
-  /** Generic channel router used by both electronAPI.invoke and ipcRenderer.invoke. */
-  function routeChannel(channel) {
-    var ch = typeof channel === "string" ? channel.toLowerCase() : "";
-    console.log("[MakerBridge] routeChannel:", channel);
-    if (ch.indexOf("start") >= 0) return resolvePromise(recStartResp());
-    if (ch.indexOf("stop") >= 0) return resolvePromise(recStopResp());
-    if (ch.indexOf("pause") >= 0) return resolvePromise(recPauseResp());
-    if (ch.indexOf("resume") >= 0) return resolvePromise(recResumeResp());
-    if (ch.indexOf("state") >= 0 || ch.indexOf("status") >= 0)
-      return resolvePromise(recStatusResp());
-    if (ch.indexOf("recording") >= 0) return resolvePromise({ ok: true });
-    return resolvePromise({ ok: true });
-  }
+    // -----------------------------------------------------------------------
+    // ipcRenderer
+    // -----------------------------------------------------------------------
+    var ipcRenderer = {};
+    define(ipcRenderer, "invoke", function (channel /*, ...args */) {
+      return routeChannel(channel);
+    });
+    define(ipcRenderer, "send", function (channel /*, ...args */) {
+      console.log("[MakerBridge] ipcRenderer.send:", channel);
+    });
+    define(ipcRenderer, "sendSync", function (channel /*, ...args */) {
+      console.log("[MakerBridge] ipcRenderer.sendSync:", channel);
+      return { ok: true };
+    });
+    define(ipcRenderer, "on", function () { return ipcRenderer; });
+    define(ipcRenderer, "once", function () { return ipcRenderer; });
+    define(ipcRenderer, "addListener", function () { return ipcRenderer; });
+    define(ipcRenderer, "removeListener", function () { return ipcRenderer; });
+    define(ipcRenderer, "removeAllListeners", function () { return ipcRenderer; });
 
-  // ---------------------------------------------------------------------------
-  // Build ipcRenderer in the page compartment
-  // ---------------------------------------------------------------------------
-  var ipcRenderer = Cu.createObjectIn(pageWindow);
-  defineFn(ipcRenderer, "invoke", function (channel /*, ...args */) {
-    return routeChannel(channel);
-  });
-  defineFn(ipcRenderer, "send", function (channel /*, ...args */) {
-    console.log("[MakerBridge] ipcRenderer.send:", channel);
-  });
-  defineFn(ipcRenderer, "sendSync", function (channel /*, ...args */) {
-    console.log("[MakerBridge] ipcRenderer.sendSync:", channel);
-    return clone({ ok: true });
-  });
-  defineFn(ipcRenderer, "on", function () {
-    return ipcRenderer;
-  });
-  defineFn(ipcRenderer, "once", function () {
-    return ipcRenderer;
-  });
-  defineFn(ipcRenderer, "addListener", function () {
-    return ipcRenderer;
-  });
-  defineFn(ipcRenderer, "removeListener", function () {
-    return ipcRenderer;
-  });
-  defineFn(ipcRenderer, "removeAllListeners", function () {
-    return ipcRenderer;
-  });
+    // -----------------------------------------------------------------------
+    // electronAPI
+    // -----------------------------------------------------------------------
+    var electronAPI = {};
+    electronAPI.isElectron = true;
+    electronAPI.isAndroid = true;
+    electronAPI.platform = "android";
 
-  // ---------------------------------------------------------------------------
-  // Build electronAPI in the page compartment
-  // ---------------------------------------------------------------------------
-  var electronAPI = Cu.createObjectIn(pageWindow);
+    // Informational / account stubs
+    define(electronAPI, "getAppVersion", function () { return APP_VERSION; });
+    define(electronAPI, "checkUpdate", function () {
+      return Promise.resolve({ ok: true, hasUpdate: false });
+    });
+    define(electronAPI, "syncPreferences", function () {});
+    define(electronAPI, "openLogin", function () {});
+    define(electronAPI, "openExplorer", function () {});
+    define(electronAPI, "openGameBackend", function () {});
+    define(electronAPI, "getDeveloperId", function () { return null; });
+    define(electronAPI, "getActiveDeveloperId", function () { return null; });
+    define(electronAPI, "getStudios", function () { return Promise.resolve([]); });
+    define(electronAPI, "switchStudio", function () { return false; });
+    define(electronAPI, "getAccounts", function () { return Promise.resolve([]); });
+    define(electronAPI, "switchAccount", function () { return false; });
+    define(electronAPI, "addAccount", function () {});
+    define(electronAPI, "removeAccount", function () {
+      return Promise.resolve({ ok: false });
+    });
+    define(electronAPI, "getCapturedApis", function () { return Promise.resolve([]); });
+    define(electronAPI, "clearCapturedApis", function () {});
 
-  // Scalar flags.
-  electronAPI.isElectron = true;
-  electronAPI.isAndroid = true;
-  electronAPI.platform = "android";
-
-  // ---- Informational / account stubs ---------------------------------------
-  defineFn(electronAPI, "getAppVersion", function () {
-    return "1.0.5";
-  });
-  defineFn(electronAPI, "checkUpdate", function () {
-    return resolvePromise({ ok: true, hasUpdate: false });
-  });
-  defineFn(electronAPI, "syncPreferences", function () {});
-  defineFn(electronAPI, "openLogin", function () {});
-  defineFn(electronAPI, "openExplorer", function () {});
-  defineFn(electronAPI, "openGameBackend", function () {});
-  defineFn(electronAPI, "getDeveloperId", function () {
-    return null;
-  });
-  defineFn(electronAPI, "getActiveDeveloperId", function () {
-    return null;
-  });
-  defineFn(electronAPI, "getStudios", function () {
-    return resolvePromise([]);
-  });
-  defineFn(electronAPI, "switchStudio", function () {
-    return false;
-  });
-  defineFn(electronAPI, "getAccounts", function () {
-    return resolvePromise([]);
-  });
-  defineFn(electronAPI, "switchAccount", function () {
-    return false;
-  });
-  defineFn(electronAPI, "addAccount", function () {});
-  defineFn(electronAPI, "removeAccount", function () {
-    return resolvePromise({ ok: false });
-  });
-  defineFn(electronAPI, "getCapturedApis", function () {
-    return resolvePromise([]);
-  });
-  defineFn(electronAPI, "clearCapturedApis", function () {});
-
-  // ---- fetch passthrough (uses page fetch for correct cookies/CORS) --------
-  defineFn(electronAPI, "fetch", function (url) {
-    var pFetch = pageWindow.fetch;
-    return new pFetch.constructor(function (resolve) {
-      pFetch(url)
+    // fetch passthrough (uses page fetch natively for correct cookies/CORS)
+    define(electronAPI, "fetch", function (url) {
+      return fetch(url)
         .then(function (r) {
           return r.text().then(function (t) {
-            resolve(clone({ ok: r.ok, status: r.status, body: t, error: null }));
+            return { ok: r.ok, status: r.status, body: t, error: null };
           });
         })
-        ["catch"](function (e) {
-          resolve(clone({ ok: false, status: 0, body: null, error: String(e) }));
+        .catch(function (e) {
+          return { ok: false, status: 0, body: null, error: String(e) };
         });
     });
-  });
 
-  defineFn(electronAPI, "checkLogin", function () {
-    return resolvePromise({
-      status: "unlogged",
-      developerId: null,
-      error: null,
-      profile: null,
-      studios: [],
+    define(electronAPI, "checkLogin", function () {
+      return Promise.resolve({
+        status: "unlogged",
+        developerId: null,
+        error: null,
+        profile: null,
+        studios: [],
+      });
     });
-  });
 
-  defineFn(electronAPI, "replayApi", function (_id, url) {
-    var pFetch = pageWindow.fetch;
-    return new pFetch.constructor(function (resolve) {
-      pFetch(url)
+    define(electronAPI, "replayApi", function (_id, url) {
+      return fetch(url)
         .then(function (r) {
           return r.text().then(function (t) {
-            resolve(clone({ ok: r.ok, status: r.status, body: t, error: null }));
+            return { ok: r.ok, status: r.status, body: t, error: null };
           });
         })
-        ["catch"](function (e) {
-          resolve(clone({ ok: false, error: String(e) }));
+        .catch(function (e) {
+          return { ok: false, error: String(e) };
         });
     });
-  });
-  defineFn(electronAPI, "replayKeyApis", function () {
-    return resolvePromise({ count: 0, saved: false });
-  });
+    define(electronAPI, "replayKeyApis", function () {
+      return Promise.resolve({ count: 0, saved: false });
+    });
 
-  // ---- Event subscription stubs --------------------------------------------
-  ["onLoginSuccess", "onLoginCheck", "onAccountUpdated", "onStudioSwitched",
-   "onApisUpdated", "onTrayRefresh", "onAppResume", "onAppBackgroundTick"
-  ].forEach(function (name) {
-    defineFn(electronAPI, name, function () {});
-  });
+    // Event subscription stubs
+    [
+      "onLoginSuccess", "onLoginCheck", "onAccountUpdated", "onStudioSwitched",
+      "onApisUpdated", "onTrayRefresh", "onAppResume", "onAppBackgroundTick",
+    ].forEach(function (name) {
+      define(electronAPI, name, function () {});
+    });
 
-  // ---- Recording methods (plain names) -------------------------------------
-  defineFn(electronAPI, "startRecording", function () {
-    return resolvePromise(recStartResp());
-  });
-  defineFn(electronAPI, "stopRecording", function () {
-    return resolvePromise(recStopResp());
-  });
-  defineFn(electronAPI, "pauseRecording", function () {
-    return resolvePromise(recPauseResp());
-  });
-  defineFn(electronAPI, "resumeRecording", function () {
-    return resolvePromise(recResumeResp());
-  });
-  defineFn(electronAPI, "getRecordingState", function () {
-    return resolvePromise(recStatusResp());
-  });
+    // Recording methods (plain names)
+    define(electronAPI, "startRecording", function () {
+      return Promise.resolve(recStartResp());
+    });
+    define(electronAPI, "stopRecording", function () {
+      return Promise.resolve(recStopResp());
+    });
+    define(electronAPI, "pauseRecording", function () {
+      return Promise.resolve(recPauseResp());
+    });
+    define(electronAPI, "resumeRecording", function () {
+      return Promise.resolve(recResumeResp());
+    });
+    define(electronAPI, "getRecordingState", function () {
+      return Promise.resolve(recStatusResp());
+    });
 
-  // ---- Generic invoke() router (handles hyphenated channel names) ----------
-  defineFn(electronAPI, "invoke", function (channel /*, ...args */) {
-    return routeChannel(channel);
-  });
-  defineFn(electronAPI, "send", function (channel /*, ...args */) {
-    console.log("[MakerBridge] electronAPI.send:", channel);
-  });
+    // Generic invoke() router (handles hyphenated channel names)
+    define(electronAPI, "invoke", function (channel /*, ...args */) {
+      return routeChannel(channel);
+    });
+    define(electronAPI, "send", function (channel /*, ...args */) {
+      console.log("[MakerBridge] electronAPI.send:", channel);
+    });
 
-  // ---- Hyphenated channel names as direct callable methods -----------------
-  // The desktop app calls things like electronAPI['recording-request-stop']().
-  defineFn(electronAPI, "recording-request-start", function () {
-    return resolvePromise(recStartResp());
-  });
-  defineFn(electronAPI, "recording-request-stop", function () {
-    return resolvePromise(recStopResp());
-  });
-  defineFn(electronAPI, "recording-request-pause", function () {
-    return resolvePromise(recPauseResp());
-  });
-  defineFn(electronAPI, "recording-request-resume", function () {
-    return resolvePromise(recResumeResp());
-  });
-  defineFn(electronAPI, "recording-request-status", function () {
-    return resolvePromise(recStatusResp());
-  });
+    // Hyphenated channel names as direct callable methods
+    define(electronAPI, "recording-request-start", function () {
+      return Promise.resolve(recStartResp());
+    });
+    define(electronAPI, "recording-request-stop", function () {
+      return Promise.resolve(recStopResp());
+    });
+    define(electronAPI, "recording-request-pause", function () {
+      return Promise.resolve(recPauseResp());
+    });
+    define(electronAPI, "recording-request-resume", function () {
+      return Promise.resolve(recResumeResp());
+    });
+    define(electronAPI, "recording-request-status", function () {
+      return Promise.resolve(recStatusResp());
+    });
 
-  // ---- Attach ipcRenderer as a property of electronAPI --------------------
-  // electronAPI.ipcRenderer.invoke('recording-request-stop') pattern.
-  Object.defineProperty(electronAPI, "ipcRenderer", {
-    value: ipcRenderer,
-    writable: true,
-    configurable: true,
-    enumerable: true,
-  });
+    // Attach ipcRenderer as a property of electronAPI
+    define(electronAPI, "ipcRenderer", ipcRenderer);
 
-  // ---------------------------------------------------------------------------
-  // Install electronAPI on the page window
-  // ---------------------------------------------------------------------------
-  Object.defineProperty(pageWindow, "electronAPI", {
-    value: electronAPI,
-    writable: true,
-    configurable: true,
-    enumerable: true,
-  });
+    // Install electronAPI on window
+    define(window, "electronAPI", electronAPI);
 
-  // ---------------------------------------------------------------------------
-  // require('electron') polyfill (in case the page does const {ipcRenderer} = require('electron'))
-  // ---------------------------------------------------------------------------
-  var electronModule = Cu.createObjectIn(pageWindow);
-  Object.defineProperty(electronModule, "ipcRenderer", {
-    value: ipcRenderer,
-    writable: true,
-    configurable: true,
-    enumerable: true,
-  });
-  Object.defineProperty(electronModule, "electronAPI", {
-    value: electronAPI,
-    writable: true,
-    configurable: true,
-    enumerable: true,
-  });
-
-  function makeRequire() {
+    // -----------------------------------------------------------------------
+    // require('electron') polyfill
+    // -----------------------------------------------------------------------
+    var electronModule = { ipcRenderer: ipcRenderer, electronAPI: electronAPI };
     function requireShim(name) {
       if (name === "electron") return electronModule;
       if (name === "path" || name === "fs" || name === "os" || name === "url") {
-        // Return a minimal stub for common Node built-ins the page might import.
-        return Cu.createObjectIn(pageWindow);
+        return {};
       }
-      throw new pageWindow.Error("Cannot find module '" + name + "'");
+      throw new Error("Cannot find module '" + name + "'");
     }
-    return requireShim;
-  }
-  defineFn(pageWindow, "require", makeRequire());
+    define(window, "require", requireShim);
 
-  // ---------------------------------------------------------------------------
-  // process.versions.electron — some Electron-detection code checks this.
-  // ---------------------------------------------------------------------------
-  try {
-    var proc = Cu.createObjectIn(pageWindow);
-    var versions = Cu.createObjectIn(pageWindow);
-    versions.electron = "1.0.5";
-    versions.chrome = "153.0.0.0";
-    versions.node = "18.0.0";
-    Object.defineProperty(proc, "versions", {
-      value: versions,
-      writable: true,
-      configurable: true,
-      enumerable: true,
-    });
-    proc.type = "renderer";
-    proc.platform = "android";
-    proc.env = Cu.createObjectIn(pageWindow);
-    proc.cwd = exportFunction(function () {
-      return "/";
-    }, proc);
-    Object.defineProperty(pageWindow, "process", {
-      value: proc,
-      writable: true,
-      configurable: true,
-      enumerable: true,
-    });
-  } catch (e) {
-    console.warn("[MakerBridge] Failed to install process shim:", e);
-  }
+    // -----------------------------------------------------------------------
+    // process.versions.electron — some Electron-detection code checks this.
+    // -----------------------------------------------------------------------
+    try {
+      var proc = {
+        type: "renderer",
+        platform: "android",
+        env: {},
+        cwd: function () { return "/"; },
+        versions: {
+          electron: APP_VERSION,
+          chrome: "153.0.0.0",
+          node: "18.0.0",
+        },
+      };
+      define(window, "process", proc);
+    } catch (e) {
+      console.warn("[MakerBridge] Failed to install process shim:", e);
+    }
 
-  // ---------------------------------------------------------------------------
-  // Legacy AndroidBridge (older page builds may still call window.AndroidBridge)
-  // ---------------------------------------------------------------------------
-  try {
-    var androidBridge = Cu.createObjectIn(pageWindow);
-    defineFn(androidBridge, "isElectron", function () {
-      return true;
-    });
-    defineFn(androidBridge, "getAppVersion", function () {
-      return "1.0.5";
-    });
-    defineFn(androidBridge, "getDeveloperId", function () {
-      return null;
-    });
-    defineFn(androidBridge, "getActiveDeveloperId", function () {
-      return null;
-    });
-    defineFn(androidBridge, "getStudios", function () {
-      return "[]";
-    });
-    defineFn(androidBridge, "switchStudio", function () {
-      return false;
-    });
-    defineFn(androidBridge, "getAccounts", function () {
-      return "[]";
-    });
-    defineFn(androidBridge, "switchAccount", function () {
-      return false;
-    });
-    defineFn(androidBridge, "addAccount", function () {});
-    defineFn(androidBridge, "removeAccount", function () {
-      return false;
-    });
-    defineFn(androidBridge, "openLogin", function () {});
-    defineFn(androidBridge, "openExplorer", function () {});
-    defineFn(androidBridge, "openGameBackend", function () {});
-    defineFn(androidBridge, "getCapturedApis", function () {
-      return "[]";
-    });
-    defineFn(androidBridge, "clearCapturedApis", function () {});
-    defineFn(androidBridge, "checkUpdate", function () {});
-    defineFn(androidBridge, "checkLogin", function () {
-      try {
-        pageWindow.__pendingLoginResolve &&
-          pageWindow.__pendingLoginResolve(
-            JSON.stringify(
-              clone({
+    // -----------------------------------------------------------------------
+    // Legacy AndroidBridge
+    // -----------------------------------------------------------------------
+    try {
+      var androidBridge = {};
+      define(androidBridge, "isElectron", function () { return true; });
+      define(androidBridge, "getAppVersion", function () { return APP_VERSION; });
+      define(androidBridge, "getDeveloperId", function () { return null; });
+      define(androidBridge, "getActiveDeveloperId", function () { return null; });
+      define(androidBridge, "getStudios", function () { return "[]"; });
+      define(androidBridge, "switchStudio", function () { return false; });
+      define(androidBridge, "getAccounts", function () { return "[]"; });
+      define(androidBridge, "switchAccount", function () { return false; });
+      define(androidBridge, "addAccount", function () {});
+      define(androidBridge, "removeAccount", function () { return false; });
+      define(androidBridge, "openLogin", function () {});
+      define(androidBridge, "openExplorer", function () {});
+      define(androidBridge, "openGameBackend", function () {});
+      define(androidBridge, "getCapturedApis", function () { return "[]"; });
+      define(androidBridge, "clearCapturedApis", function () {});
+      define(androidBridge, "checkUpdate", function () {});
+      define(androidBridge, "checkLogin", function () {
+        try {
+          if (window.__pendingLoginResolve) {
+            window.__pendingLoginResolve(
+              JSON.stringify({
                 status: "unlogged",
                 developerId: null,
                 error: null,
                 profile: null,
                 studios: [],
               })
+            );
+          }
+        } catch (_) {}
+      });
+      define(androidBridge, "fetch", function (id, url) {
+        fetch(url)
+          .then(function (r) { return r.text(); })
+          .then(function (t) {
+            if (window.__pendingFetchResolve) {
+              window.__pendingFetchResolve(
+                id,
+                JSON.stringify({ ok: true, status: 200, body: t, error: null })
+              );
+            }
+          })
+          .catch(function (e) {
+            if (window.__pendingFetchResolve) {
+              window.__pendingFetchResolve(
+                id,
+                JSON.stringify({ ok: false, error: String(e) })
+              );
+            }
+          });
+      });
+      define(androidBridge, "replayApi", function (id) {
+        if (window.__pendingReplayResolve) {
+          window.__pendingReplayResolve(
+            id,
+            JSON.stringify({ ok: false, error: "not_available" })
+          );
+        }
+      });
+      define(androidBridge, "replayKeyApis", function () {
+        if (window.__pendingReplayKeyResolve) {
+          window.__pendingReplayKeyResolve(
+            JSON.stringify({ count: 0, saved: false })
+          );
+        }
+      });
+      define(window, "AndroidBridge", androidBridge);
+    } catch (e) {
+      console.warn("[MakerBridge] Failed to install AndroidBridge:", e);
+    }
+
+    // Pending callbacks (no-op defaults).
+    [
+      "__pendingFetchResolve", "__pendingLoginResolve",
+      "__pendingReplayResolve", "__pendingReplayKeyResolve",
+    ].forEach(function (k) {
+      if (!window[k]) window[k] = function () {};
+    });
+
+    // -----------------------------------------------------------------------
+    // Unconditionally stub navigator.mediaDevices.getDisplayMedia so any web
+    // screen-recorder fallback path gets a clean, recognizable rejection
+    // instead of Gecko's "is not supported by this user agent" DOMException.
+    // -----------------------------------------------------------------------
+    try {
+      if (navigator && navigator.mediaDevices) {
+        var md = navigator.mediaDevices;
+        md.getDisplayMedia = function () {
+          console.warn("[MakerBridge] getDisplayMedia() stubbed -> reject NotSupportedError");
+          return Promise.reject(
+            new DOMException(
+              "Screen capture is handled via Electron IPC on this client",
+              "NotSupportedError"
             )
           );
-      } catch (_) {}
-    });
-    defineFn(androidBridge, "fetch", function (id, url) {
-      pageWindow
-        .fetch(url)
-        .then(function (r) {
-          return r.text();
-        })
-        .then(function (t) {
-          pageWindow.__pendingFetchResolve &&
-            pageWindow.__pendingFetchResolve(
-              id,
-              JSON.stringify(
-                clone({ ok: true, status: 200, body: t, error: null })
-              )
-            );
-        })
-        ["catch"](function (e) {
-          pageWindow.__pendingFetchResolve &&
-            pageWindow.__pendingFetchResolve(
-              id,
-              JSON.stringify(clone({ ok: false, error: String(e) }))
-            );
-        });
-    });
-    defineFn(androidBridge, "replayApi", function (id) {
-      pageWindow.__pendingReplayResolve &&
-        pageWindow.__pendingReplayResolve(
-          id,
-          JSON.stringify(clone({ ok: false, error: "not_available" }))
-        );
-    });
-    defineFn(androidBridge, "replayKeyApis", function () {
-      pageWindow.__pendingReplayKeyResolve &&
-        pageWindow.__pendingReplayKeyResolve(
-          JSON.stringify(clone({ count: 0, saved: false }))
-        );
-    });
+        };
+      }
+    } catch (e) {
+      console.warn("[MakerBridge] Could not stub mediaDevices:", e);
+    }
 
-    Object.defineProperty(pageWindow, "AndroidBridge", {
-      value: androidBridge,
-      writable: true,
-      configurable: true,
-      enumerable: true,
-    });
-  } catch (e) {
-    console.warn("[MakerBridge] Failed to install AndroidBridge:", e);
-  }
+    // -----------------------------------------------------------------------
+    // Diagnostic flags
+    // -----------------------------------------------------------------------
+    window.__makerBridgeVersion = "1.2.0";
+    window.__makerBridgeMethods = [
+      "startRecording", "stopRecording", "pauseRecording", "resumeRecording", "getRecordingState",
+      "recording-request-start", "recording-request-stop",
+      "recording-request-pause", "recording-request-resume", "recording-request-status",
+      "invoke", "send",
+    ];
 
-  // Pending callbacks (no-op defaults).
-  ["__pendingFetchResolve", "__pendingLoginResolve",
-   "__pendingReplayResolve", "__pendingReplayKeyResolve"
-  ].forEach(function (k) {
-    if (!pageWindow[k]) {
+    // -----------------------------------------------------------------------
+    // Dispatch readiness events (with retries for late-init page code).
+    // -----------------------------------------------------------------------
+    function fireEvent(name) {
       try {
-        pageWindow[k] = exportFunction(function () {}, pageWindow, { defineAs: k });
+        window.dispatchEvent(new CustomEvent(name));
       } catch (_) {
-        pageWindow[k] = function () {};
+        try { window.dispatchEvent(new Event(name)); } catch (_) {}
       }
     }
-  });
+    function announce() {
+      fireEvent("electronAPIReady");
+      fireEvent("electron-api-ready");
+      fireEvent("bridge-ready");
+      fireEvent("android-bridge-ready");
+      console.log(
+        "[MakerBridge] v" + window.__makerBridgeVersion +
+        " injected. electronAPI=" + typeof window.electronAPI +
+        " ipcRenderer=" + typeof (window.electronAPI && window.electronAPI.ipcRenderer) +
+        " stop=" + typeof (window.electronAPI && window.electronAPI["recording-request-stop"])
+      );
+    }
+    announce();
+    setTimeout(announce, 0);
+    setTimeout(announce, 50);
+    setTimeout(announce, 200);
+    setTimeout(announce, 1000);
+    setTimeout(announce, 3000);
+  }
 
   // ---------------------------------------------------------------------------
-  // Unconditionally stub navigator.mediaDevices.getDisplayMedia / getUserMedia
-  // so any web-screen-recorder fallback path returns a clean rejection instead
-  // of Gecko's "is not supported by this user agent" DOMException.
+  // Inject path 1: eval the bridge source directly in the page realm via
+  // wrappedJSObject.eval — this is the primary mechanism.
+  // ---------------------------------------------------------------------------
+  var bridgeSource = "(" + installBridge.toString() + ")();";
+  try {
+    pageWindow.eval(bridgeSource);
+    console.log("[MakerBridge] Bridge source evaled into page realm (size=" + bridgeSource.length + ").");
+  } catch (e) {
+    console.error("[MakerBridge] wrappedJSObject.eval failed:", e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inject path 2: <script> tag belt-and-suspenders. CSP on maker.taptap.cn
+  // currently allows inline script injection for extension-created nodes
+  // (WebExtension-created <script> is treated as privileged). Even if CSP
+  // blocks it, path 1 has already done the job.
   // ---------------------------------------------------------------------------
   try {
-    var nav = pageWindow.navigator;
-    if (nav && nav.mediaDevices) {
-      var md = nav.mediaDevices.wrappedJSObject || nav.mediaDevices;
-      // Override getDisplayMedia to reject with a recognizable error so the
-      // page's promise/catch logic (which shows the toast) sees our clean
-      // "not supported on Android" instead of a cryptic UA message.
-      defineFn(md, "getDisplayMedia", function () {
-        console.warn("[MakerBridge] getDisplayMedia() stubbed -> reject NotSupportedError");
-        return pageWindow.Promise.reject(
-          new pageWindow.DOMException(
-            "Screen capture is handled via Electron IPC on this client",
-            "NotSupportedError"
-          )
-        );
-      });
+    var doc = window.document;
+    if (doc && doc.documentElement) {
+      var script = doc.createElement("script");
+      script.textContent = bridgeSource;
+      script.setAttribute("data-makerbridge", "1");
+      // Insert at the earliest possible point.
+      (doc.head || doc.documentElement).appendChild(script);
+      // Remove the node after execution to keep DOM clean.
+      try { script.parentNode && script.parentNode.removeChild(script); } catch (_) {}
     }
   } catch (e) {
-    console.warn("[MakerBridge] Could not stub mediaDevices:", e);
+    // Not fatal — path 1 is the primary.
+    console.warn("[MakerBridge] <script> injection skipped:", e);
   }
 
-  // ---------------------------------------------------------------------------
-  // Diagnostic flag — visible to the page and to us via remote debugging.
-  // ---------------------------------------------------------------------------
-  pageWindow.__makerBridgeVersion = "1.1.1";
-  pageWindow.__makerBridgeMethods = [
-    "startRecording", "stopRecording", "pauseRecording", "resumeRecording", "getRecordingState",
-    "recording-request-start", "recording-request-stop",
-    "recording-request-pause", "recording-request-resume", "recording-request-status",
-    "invoke", "send",
-  ];
-
-  // ---------------------------------------------------------------------------
-  // Dispatch readiness events (with retries for late-init page code).
-  // ---------------------------------------------------------------------------
-  function fireEvent(name) {
-    try {
-      pageWindow.dispatchEvent(new pageWindow.CustomEvent(name));
-    } catch (_) {
-      try {
-        pageWindow.dispatchEvent(new pageWindow.Event(name));
-      } catch (_) {}
-    }
-  }
-
-  function announce() {
-    fireEvent("electronAPIReady");
-    fireEvent("electron-api-ready");
-    fireEvent("bridge-ready");
-    fireEvent("android-bridge-ready");
-    console.log(
-      "[MakerBridge] v1.1.1 injected. electronAPI=",
-      typeof pageWindow.electronAPI,
-      " ipcRenderer=",
-      typeof (pageWindow.electronAPI && pageWindow.electronAPI.ipcRenderer),
-      " stop=",
-      typeof (pageWindow.electronAPI && pageWindow.electronAPI["recording-request-stop"])
-    );
-  }
-
-  announce();
-  // Retry announcements for late-bootstrapped page scripts.
-  try {
-    pageWindow.setTimeout(announce, 0);
-    pageWindow.setTimeout(announce, 50);
-    pageWindow.setTimeout(announce, 200);
-    pageWindow.setTimeout(announce, 1000);
-    pageWindow.setTimeout(announce, 3000);
-  } catch (_) {}
-
-  console.log("[MakerBridge] Content script initialized (document_start).");
+  console.log("[MakerBridge] Content script initialized (document_start, zero-privilege).");
 })();
