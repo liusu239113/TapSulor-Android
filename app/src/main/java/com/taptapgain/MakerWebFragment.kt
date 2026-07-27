@@ -1095,6 +1095,8 @@ class MakerWebFragment : Fragment() {
 
                 val settings = GeckoRuntimeSettings.Builder()
                     .configFilePath(configFile.absolutePath)
+                    .extensionsWebAPIEnabled(true)
+                    .extensionsProcessEnabled(true)
                     .fissionEnabled(true)
                     .javaScriptEnabled(true)
                     .remoteDebuggingEnabled(true)
