@@ -226,7 +226,7 @@ class CommunityFragment : Fragment() {
                 text = step
                 setTextColor(textColor)
                 textSize = 14f
-                lineSpacing = dp(4).toFloat()
+                setLineSpacing(dp(4).toFloat(), 1.0f)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
             container.addView(row)
