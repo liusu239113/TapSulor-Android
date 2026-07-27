@@ -480,6 +480,42 @@ class MakerWebFragment : Fragment() {
                 }
             }
         }
+
+        // === 权限代理:处理摄像头/麦克风/屏幕录制权限请求 ===
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission
+            ): GeckoResult<Int> {
+                // 自动允许地理位置/通知等内容权限(保持与常规浏览器一致)
+                Log.d(TAG, "onContentPermissionRequest: ${perm.permission} (uri=${perm.uri})")
+                return GeckoResult.fromValue(GeckoSession.PermissionDelegate.PERMISSION_ALLOW)
+            }
+
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<out GeckoSession.PermissionDelegate.MediaSource>,
+                audio: Array<out GeckoSession.PermissionDelegate.MediaSource>,
+                callback: GeckoSession.PermissionDelegate.MediaCallback
+            ) {
+                // 自动允许摄像头/麦克风(游戏录制场景),优先选第一个可用源
+                Log.d(TAG, "onMediaPermissionRequest: video=${video.size} audio=${audio.size}")
+                val videoSrc = video.firstOrNull()
+                val audioSrc = audio.firstOrNull()
+                callback.grant(videoSrc, audioSrc)
+            }
+
+            override fun onAndroidPermissionsRequest(
+                session: GeckoSession,
+                permissions: Array<out String>,
+                callback: GeckoSession.PermissionDelegate.Callback
+            ) {
+                // 自动通过 Android 运行时权限请求(INTERNET 等已在 Manifest 声明)
+                Log.d(TAG, "onAndroidPermissionsRequest: ${permissions.joinToString()}")
+                callback.grant()
+            }
+        }
     }
 
     private fun updateTitleForState() {
