@@ -13,6 +13,7 @@ import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
@@ -254,6 +255,23 @@ class BackendWebViewActivity : AppCompatActivity() {
                     }
                     return true
                 }
+            }
+
+            setOnLongClickListener { v ->
+                val wv = v as? WebView ?: return@setOnLongClickListener false
+                val result = wv.hitTestResult
+                if (result != null && (result.type == WebView.HitTestResult.IMAGE_TYPE || result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                    val imgUrl = result.extra
+                    if (!imgUrl.isNullOrEmpty()) {
+                        AlertDialog.Builder(this@BackendWebViewActivity)
+                            .setItems(arrayOf("保存图片到相册")) { _, _ ->
+                                ImageSaver.saveImageFromUrl(this@BackendWebViewActivity, imgUrl)
+                            }
+                            .show()
+                        return@setOnLongClickListener true
+                    }
+                }
+                false
             }
         }
 

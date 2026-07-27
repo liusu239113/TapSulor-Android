@@ -15,6 +15,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
+import androidx.appcompat.app.AlertDialog
 import android.view.animation.OvershootInterpolator
 import android.webkit.MimeTypeMap
 import android.widget.FrameLayout
@@ -357,6 +358,50 @@ class MakerWebFragment : Fragment() {
                 Log.e(TAG, "GeckoView KILLED by system — marking for rebuild")
                 needsRebuild = true
                 updateTitleForState()
+            }
+
+            override fun onContextMenu(
+                session: GeckoSession,
+                screenX: Int,
+                screenY: Int,
+                element: GeckoSession.ContentDelegate.ContextElement
+            ): GeckoResult<AllowOrDeny>? {
+                val act = activity ?: return
+                val ctx = act as? androidx.appcompat.app.AppCompatActivity ?: return
+                val imgUrl = element.srcUri
+                val linkUrl = element.linkUri
+                act.runOnUiThread {
+                    val options = mutableListOf<String>()
+                    val actions = mutableListOf<Runnable>()
+                    if (!imgUrl.isNullOrEmpty()) {
+                        options.add("保存图片到相册")
+                        actions.add(Runnable { ImageSaver.saveImageFromUrl(ctx, imgUrl) })
+                    }
+                    if (!linkUrl.isNullOrEmpty()) {
+                        options.add("在浏览器中打开")
+                        actions.add(Runnable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(linkUrl))
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                ctx.startActivity(intent)
+                            } catch (_: Exception) {}
+                        })
+                        options.add("复制链接")
+                        actions.add(Runnable {
+                            val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("link", linkUrl))
+                            android.widget.Toast.makeText(ctx, "链接已复制", android.widget.Toast.LENGTH_SHORT).show()
+                        })
+                    }
+                    if (options.isNotEmpty()) {
+                        AlertDialog.Builder(ctx)
+                            .setItems(options.toTypedArray()) { _, which ->
+                                actions.getOrNull(which)?.run()
+                            }
+                            .show()
+                    }
+                }
+                return null
             }
         }
 

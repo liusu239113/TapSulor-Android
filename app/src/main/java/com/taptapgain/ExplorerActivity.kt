@@ -3,6 +3,7 @@ package com.taptapgain
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 class ExplorerActivity : AppCompatActivity() {
@@ -21,6 +22,22 @@ class ExplorerActivity : AppCompatActivity() {
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this@webView, true)
             }
             webViewClient = WebViewClient(); webChromeClient = WebChromeClient()
+            setOnLongClickListener { v ->
+                val wv = v as? WebView ?: return@setOnLongClickListener false
+                val result = wv.hitTestResult
+                if (result != null && (result.type == WebView.HitTestResult.IMAGE_TYPE || result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                    val imgUrl = result.extra
+                    if (!imgUrl.isNullOrEmpty()) {
+                        AlertDialog.Builder(this@ExplorerActivity)
+                            .setItems(arrayOf("保存图片到相册")) { _, _ ->
+                                ImageSaver.saveImageFromUrl(this@ExplorerActivity, imgUrl)
+                            }
+                            .show()
+                        return@setOnLongClickListener true
+                    }
+                }
+                false
+            }
         }
         setContentView(webView)
         val accountManager = AccountManager(this)
