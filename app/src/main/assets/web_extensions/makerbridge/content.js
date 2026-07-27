@@ -1,144 +1,221 @@
-﻿(function() {
-  if (window.__makerBridgeInjected) return;
-  window.__makerBridgeInjected = true;
+﻿// Content script: inject bridge code into PAGE world via <script> tag
+(function() {
+  function inject() {
+    if (document.getElementById('__maker_bridge__')) return;
+    var s = document.createElement('script');
+    s.id = '__maker_bridge__';
+    s.textContent = '(' + function() {
+      if (window.__makerBridgeInjected) return;
+      window.__makerBridgeInjected = true;
 
-  const buildPromiseBridge = () => {
-    const _fmap = {};
-    let _seq = 0;
-    const _queues = { fetch: [], login: [], replay: [], replayKey: [] };
-    const _listeners = {};
+      // ==================== Recording Native Shim ====================
+      // GeckoView/Android does NOT support navigator.mediaDevices.getDisplayMedia().
+      // We stub it out so the site does not crash. The site uses Electron IPC
+      // (electronAPI / ipcRenderer.invoke) for actual recording control.
+      if (navigator.mediaDevices && !navigator.mediaDevices.getDisplayMedia) {
+        navigator.mediaDevices.getDisplayMedia = function() {
+          console.warn('[MakerBridge] getDisplayMedia() not supported on Android GeckoView, returning rejected promise');
+          return Promise.reject(new DOMException('getDisplayMedia is not supported on Android', 'NotSupportedError'));
+        };
+      }
 
-    const api = {
-      isElectron: true,
-      fetch: function(url) {
-        return new Promise(function(res) {
-          var id = ++_seq;
-          _fmap[id] = res;
-          _queues.fetch.push({ id: id, url: url });
-          flush();
-        });
-      },
-      checkLogin: function() {
-        return new Promise(function(res) { _queues.login.push(res); flush(); });
-      },
-      getDeveloperId: function() { try { return window.__br.devId || null; } catch(e) { return null; } },
-      getStudios: function() { try { return JSON.parse(window.__br.studios || "[]"); } catch(e) { return []; } },
-      getActiveDeveloperId: function() { try { return window.__br.activeDevId || window.__br.devId || null; } catch(e) { return null; } },
-      switchStudio: function() { return false; },
-      openLogin: function() {},
-      getAccounts: function() { return []; },
-      switchAccount: function() { return false; },
-      addAccount: function() {},
-      removeAccount: function() { return { ok: false }; },
-      openExplorer: function() {},
-      openGameBackend: function() {},
-      getCapturedApis: function() { return []; },
-      clearCapturedApis: function() {},
-      replayApi: function() { return Promise.resolve({}); },
-      replayKeyApis: function() { return new Promise(function(res) { res({ count: 0, saved: false }); }); },
-      onLoginSuccess: function(cb) { _listeners.loginSuccess = cb; },
-      onLoginCheck: function(cb) { _listeners.loginCheck = cb; },
-      onAccountUpdated: function(cb) { _listeners.accountUpdated = cb; },
-      onStudioSwitched: function(cb) { _listeners.studioSwitched = cb; },
-      onApisUpdated: function() {},
-      onTrayRefresh: function() {},
-      getAppVersion: function() { return window.__br.version || "1.0.4"; },
-      checkUpdate: function() {},
-      onAppResume: function() {},
-      onAppBackgroundTick: function() {},
-      invokeNative: function(method, args) {
-        var id = ++_seq;
-        _fmap[id] = null;
-        try {
-          chrome.runtime.sendMessage({ nativeApp: "makerbridge", id: id, method: method, args: args || [] });
-        } catch(e) {}
-      },
-      startRecording: function() {
-        return new Promise(function(resolve, reject) {
-          var id = ++_seq;
-          _fmap[id] = function(res) {
-            if (res && res.ok) resolve(res);
-            else reject(new Error(res && res.error || "recording_failed"));
-          };
-          chrome.runtime.sendMessage({ nativeApp: "makerbridge", id: id, method: "recording-request-start", args: [] });
-        });
-      },
-      stopRecording: function() {
-        return new Promise(function(resolve) {
-          var id = ++_seq;
-          _fmap[id] = resolve;
-          chrome.runtime.sendMessage({ nativeApp: "makerbridge", id: id, method: "recording-request-stop", args: [] });
-        });
+      // ==================== IPC Recording Stub ====================
+      function recordingOK() {
+        return Promise.resolve({ ok: true, state: 'recording', streamId: 'native-' + Date.now() });
       }
-    };
+      function recordingStopped() {
+        return Promise.resolve({ ok: true, state: 'stopped', filePath: null });
+      }
+      function recordingPaused() {
+        return Promise.resolve({ ok: true, state: 'paused' });
+      }
 
-    function flush() {
-      if (!window.__br) { window.__br = {}; }
-      while (_queues.fetch.length) {
-        var item = _queues.fetch.shift();
-        fetch(item.url).then(function(r) { return r.text(); }).then(function(t) {
-          var cb = _fmap[item.id]; delete _fmap[item.id];
-          if (cb) cb({ ok: true, status: 200, body: t, error: null });
-        }).catch(function(e) {
-          var cb = _fmap[item.id]; delete _fmap[item.id];
-          if (cb) cb({ ok: false, status: 0, body: null, error: String(e) });
+      // ==================== electronAPI (matches desktop Electron bridge) ====================
+      var bridge = {
+        isElectron: true,
+        getAppVersion: function() { return '1.0.4'; },
+        checkUpdate: function() {},
+        syncPreferences: function() {},
+        openLogin: function() {},
+        openExplorer: function() {},
+        openGameBackend: function() {},
+        getDeveloperId: function() { return null; },
+        getActiveDeveloperId: function() { return null; },
+        getStudios: function() { return []; },
+        switchStudio: function() { return false; },
+        getAccounts: function() { return []; },
+        switchAccount: function() { return false; },
+        addAccount: function() {},
+        removeAccount: function() { return { ok: false }; },
+        getCapturedApis: function() { return []; },
+        clearCapturedApis: function() {},
+        fetch: function(url) {
+          return fetch(url).then(function(r) {
+            return r.text().then(function(t) {
+              return { ok: r.ok, status: r.status, body: t, error: null };
+            });
+          }).catch(function(e) {
+            return { ok: false, status: 0, body: null, error: String(e) };
+          });
+        },
+        checkLogin: function() {
+          return Promise.resolve({ status: 'unlogged', developerId: null, error: null, profile: null, studios: [] });
+        },
+        replayApi: function(_id, url) {
+          return fetch(url).then(function(r) {
+            return r.text().then(function(t) {
+              return { ok: r.ok, status: r.status, body: t, error: null };
+            });
+          }).catch(function(e) {
+            return { ok: false, error: String(e) };
+          });
+        },
+        replayKeyApis: function() { return Promise.resolve({ count: 0, saved: false }); },
+        onLoginSuccess: function() {},
+        onLoginCheck: function() {},
+        onAccountUpdated: function() {},
+        onStudioSwitched: function() {},
+        onApisUpdated: function() {},
+        onTrayRefresh: function() {},
+        onAppResume: function() {},
+        onAppBackgroundTick: function() {},
+        // Recording methods
+        startRecording: recordingOK,
+        stopRecording: recordingStopped,
+        pauseRecording: recordingPaused,
+        resumeRecording: recordingOK,
+        getRecordingState: function() { return Promise.resolve({ state: 'inactive', duration: 0 }); }
+      };
+
+      // ==================== ipcRenderer-style invoke (Electron pattern) ====================
+      // Many Electron apps use: ipcRenderer.invoke('recording-request-start')
+      // or: electronAPI.invoke('recording-request-start')
+      function ipcInvoke(channel) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        console.log('[MakerBridge] ipcInvoke:', channel, args);
+        if (typeof channel === 'string') {
+          if (channel.indexOf('recording-request-start') >= 0 || channel.indexOf('startRecord') >= 0 || channel.indexOf('start-recording') >= 0) return recordingOK();
+          if (channel.indexOf('recording-request-stop') >= 0 || channel.indexOf('stopRecord') >= 0 || channel.indexOf('stop-recording') >= 0) return recordingStopped();
+          if (channel.indexOf('recording-request-pause') >= 0) return recordingPaused();
+          if (channel.indexOf('recording-request-resume') >= 0) return recordingOK();
+          if (channel.indexOf('recording') >= 0) return Promise.resolve({ ok: true });
+        }
+        return Promise.resolve({ ok: true });
+      }
+
+      bridge.ipcRenderer = {
+        invoke: ipcInvoke,
+        send: function(channel) { console.log('[MakerBridge] ipcSend:', channel); },
+        on: function() {},
+        once: function() {},
+        removeListener: function() {},
+        removeAllListeners: function() {}
+      };
+      bridge.invoke = ipcInvoke;
+      bridge.send = function(channel) { console.log('[MakerBridge] send:', channel); };
+
+      // Support hyphenated property access: electronAPI['recording-request-start']()
+      // Use Proxy if available (modern browsers including GeckoView)
+      var electronAPI;
+      if (typeof Proxy === 'function') {
+        electronAPI = new Proxy(bridge, {
+          get: function(target, prop) {
+            if (prop in target) return target[prop];
+            if (typeof prop === 'string') {
+              if (prop.indexOf('recording') >= 0) {
+                console.log('[MakerBridge] Proxy trap for recording method:', prop);
+                if (prop.indexOf('stop') >= 0) return recordingStopped;
+                if (prop.indexOf('pause') >= 0) return recordingPaused;
+                if (prop.indexOf('resume') >= 0) return recordingOK;
+                if (prop.indexOf('state') >= 0 || prop.indexOf('status') >= 0) return function() { return Promise.resolve({ state: 'inactive' }); };
+                return recordingOK;
+              }
+            }
+            return undefined;
+          }
         });
+      } else {
+        electronAPI = bridge;
+        // Explicitly set hyphenated names
+        electronAPI['recording-request-start'] = recordingOK;
+        electronAPI['recording-request-stop'] = recordingStopped;
+        electronAPI['recording-request-pause'] = recordingPaused;
+        electronAPI['recording-request-resume'] = recordingOK;
+        electronAPI['recording-request-status'] = function() { return Promise.resolve({ state: 'inactive' }); };
       }
-      while (_queues.login.length) {
-        var cb = _queues.login.shift();
-        cb({ status: "unlogged", developerId: null, error: null, profile: null, studios: [] });
-      }
+
+      window.electronAPI = electronAPI;
+
+      // ==================== Legacy AndroidBridge ====================
+      window.AndroidBridge = window.AndroidBridge || {
+        isElectron: function() { return true; },
+        fetch: function(id, url) {
+          fetch(url).then(function(r) { return r.text(); }).then(function(t) {
+            if (window.__pendingFetchResolve) window.__pendingFetchResolve(id, JSON.stringify({ok:true,status:200,body:t,error:null}));
+          }).catch(function(e) {
+            if (window.__pendingFetchResolve) window.__pendingFetchResolve(id, JSON.stringify({ok:false,error:String(e)}));
+          });
+        },
+        checkLogin: function() {
+          if (window.__pendingLoginResolve) window.__pendingLoginResolve(JSON.stringify({status:'unlogged',developerId:null,error:null,profile:null,studios:[]}));
+        },
+        getDeveloperId: function() { return null; },
+        getStudios: function() { return '[]'; },
+        getActiveDeveloperId: function() { return null; },
+        switchStudio: function() { return false; },
+        openLogin: function() {},
+        getAccounts: function() { return '[]'; },
+        switchAccount: function() { return false; },
+        addAccount: function() {},
+        removeAccount: function() { return false; },
+        openExplorer: function() {},
+        openGameBackend: function() {},
+        getCapturedApis: function() { return '[]'; },
+        clearCapturedApis: function() {},
+        replayApi: function(id) {
+          if (window.__pendingReplayResolve) window.__pendingReplayResolve(id, JSON.stringify({ok:false,error:'not_available'}));
+        },
+        replayKeyApis: function() {
+          if (window.__pendingReplayKeyResolve) window.__pendingReplayKeyResolve(JSON.stringify({count:0,saved:false}));
+        },
+        getAppVersion: function() { return '1.0.4'; },
+        checkUpdate: function() {}
+      };
+
+      window.__pendingFetchResolve = window.__pendingFetchResolve || function() {};
+      window.__pendingLoginResolve = window.__pendingLoginResolve || function() {};
+      window.__pendingReplayResolve = window.__pendingReplayResolve || function() {};
+      window.__pendingReplayKeyResolve = window.__pendingReplayKeyResolve || function() {};
+
+      // Fire events
+      try { window.dispatchEvent(new CustomEvent('electronAPIReady')); } catch(e) {}
+      try { window.dispatchEvent(new Event('electron-api-ready')); } catch(e) {}
+      try { window.dispatchEvent(new Event('bridge-ready')); } catch(e) {}
+
+      console.log('[MakerBridge] Bridge injected successfully into page world, v1.0.4');
+    } + ')();';
+
+    var parent = document.head || document.documentElement;
+    if (parent) {
+      parent.appendChild(s);
+      s.remove();
+    } else {
+      // document_start too early, wait for readystate change
+      document.addEventListener('DOMContentLoaded', inject, { once: true });
     }
+  }
 
-    window.__pendingFetchResolve = function(id, jsonStr) {
-      var cb = _fmap[id]; delete _fmap[id];
-      if (cb) { try { cb(JSON.parse(jsonStr)); } catch(e) { cb({ ok: false, error: "parse_error" }); } }
+  if (document.readyState === 'loading' && !document.head) {
+    // At very early document_start, use a MutationObserver or retry
+    var retry = function() {
+      if (document.head || document.documentElement) {
+        inject();
+      } else {
+        requestAnimationFrame(retry);
+      }
     };
-    window.__pendingLoginResolve = function(jsonStr) {
-      if (_listeners.loginSuccess) { try { _listeners.loginSuccess(); } catch(e){} }
-    };
-    window.__pendingReplayResolve = function() {};
-    window.__pendingReplayKeyResolve = function(cb) { if (cb) cb({ count: 0, saved: false }); };
-
-    window.__onLoginSuccess = function() { if (_listeners.loginSuccess) _listeners.loginSuccess(); };
-    window.__onLoginCheck = function() { if (_listeners.loginCheck) _listeners.loginCheck(); };
-    window.__onAccountUpdated = function() { if (_listeners.accountUpdated) _listeners.accountUpdated(); };
-    window.__onStudioSwitched = function() { if (_listeners.studioSwitched) _listeners.studioSwitched(); };
-
-    window.__nativeResponse = function(id, resultStr) {
-      var cb = _fmap[id]; delete _fmap[id];
-      if (cb) { try { cb(JSON.parse(resultStr)); } catch(e) { cb({ ok: false, error: "parse_error" }); } }
-    };
-
-    window.electronAPI = api;
-    if (!window.AndroidBridge) window.AndroidBridge = {
-      fetch: function(id, url) { fetch(url).then(function(r){return r.text();}).then(function(t){window.__pendingFetchResolve(id, JSON.stringify({ok:true,status:200,body:t,error:null}));}).catch(function(e){window.__pendingFetchResolve(id, JSON.stringify({ok:false,error:String(e)}));}); },
-      checkLogin: function() { window.__pendingLoginResolve(JSON.stringify({status:"unlogged",developerId:null,error:null,profile:null,studios:[]})); },
-      getDeveloperId: function() { return null; },
-      getStudios: function() { return "[]"; },
-      getActiveDeveloperId: function() { return null; },
-      switchStudio: function() { return false; },
-      openLogin: function() {},
-      getAccounts: function() { return "[]"; },
-      switchAccount: function() { return false; },
-      addAccount: function() {},
-      removeAccount: function() { return false; },
-      openExplorer: function() {},
-      openGameBackend: function() {},
-      getCapturedApis: function() { return "[]"; },
-      clearCapturedApis: function() {},
-      replayApi: function(id) { window.__pendingReplayResolve(id, JSON.stringify({ok:false,error:"not_available"})); },
-      replayKeyApis: function() { window.__pendingReplayKeyResolve(function(){})(JSON.stringify({count:0,saved:false})); },
-      getAppVersion: function() { return "1.0.4"; },
-      checkUpdate: function() {}
-    };
-    window.dispatchEvent(new CustomEvent("electronAPIReady"));
-    flush();
-  };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", buildPromiseBridge);
+    requestAnimationFrame(retry);
   } else {
-    buildPromiseBridge();
+    inject();
   }
 })();

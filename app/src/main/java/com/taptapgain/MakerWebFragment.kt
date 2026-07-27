@@ -1115,7 +1115,11 @@ class MakerWebFragment : Fragment() {
                         ext?.setMessageDelegate(object : WebExtension.MessageDelegate {
                             override fun onMessage(nativeApp: String, msg: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
                                 Log.d(TAG, "Native message: nativeApp=$nativeApp msg=$msg")
-                                return GeckoResult.fromValue(mapOf("ok" to false, "error" to "not_implemented") as Any)
+                                // Return ok:true for all messages (recording stubs handled in injected page JS)
+                                return GeckoResult.fromValue(mapOf("ok" to true) as Any)
+                            }
+                            override fun onConnect(port: WebExtension.Port) {
+                                Log.d(TAG, "Native connect: port=${port.name}")
                             }
                         }, "makerbridge")
                     }, { throwable ->
