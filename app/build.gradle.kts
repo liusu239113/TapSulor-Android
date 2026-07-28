@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -21,8 +21,8 @@ android {
         applicationId = "com.taptapgain"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -115,3 +115,4 @@ configurations.configureEach {
         force("androidx.media3:media3-database:1.3.1")
     }
 }
+

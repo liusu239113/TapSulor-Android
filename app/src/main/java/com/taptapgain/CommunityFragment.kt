@@ -1,9 +1,12 @@
 package com.taptapgain
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -18,6 +21,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 
 class CommunityFragment : Fragment() {
@@ -32,8 +37,23 @@ class CommunityFragment : Fragment() {
     private var topBar: LinearLayout? = null
     private var contentContainer: FrameLayout? = null
     private var introScroll: ScrollView? = null
-    private var introContainer: LinearLayout? = null
     private var inWebMode: Boolean = false
+
+    // 图片/文件选择回调
+    private var filePathCallback: android.webkit.ValueCallback<Array<Uri>>? = null
+
+    private val fileChooser = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val cb = filePathCallback
+        filePathCallback = null
+        val uri = result.data?.data
+        if (result.resultCode == Activity.RESULT_OK && uri != null) {
+            cb?.onReceiveValue(arrayOf(uri))
+        } else {
+            cb?.onReceiveValue(null)
+        }
+    }
 
     // Theme-tracking references for intro page
     private var tvTitle: TextView? = null
@@ -112,7 +132,7 @@ class CommunityFragment : Fragment() {
 
         closeBtn = TextView(ctx).apply {
             text = "✕"; textSize = 18f; gravity = Gravity.CENTER
-            setTextColor(ContextCompat_getColor(ctx, R.color.color_error))
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.color_error))
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
             contentDescription = "关闭"; isClickable = true
             setOnClickListener { (act as? MainActivity)?.switchToTab(R.id.nav_home) }
@@ -148,7 +168,6 @@ class CommunityFragment : Fragment() {
 
     private fun applyAllTheme() {
         val ctx = context ?: return
-        // Top bar buttons
         val tf = FontHelper.currentTypeface(ctx) ?: Typeface.DEFAULT
         val accent = FontHelper.currentAccentColor(ctx)
         val isDark = FontHelper.isDarkMode(ctx)
@@ -170,7 +189,6 @@ class CommunityFragment : Fragment() {
         titleText?.apply { typeface = tf; setTextColor(textPri) }
         closeBtn?.apply { typeface = tf }
 
-        // Intro page colors
         tvTitle?.apply { typeface = tf; setTextColor(accent) }
         tvSub?.apply { typeface = tf; setTextColor(textSec) }
         tvUrlLabel?.apply { typeface = tf; setTextColor(accent) }
@@ -216,7 +234,6 @@ class CommunityFragment : Fragment() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        introContainer = container
 
         fun makeTv(txt: String, sz: Float, col: Int, bold: Boolean = false,
                    sel: Boolean = false): TextView = TextView(ctx).apply {
@@ -270,12 +287,12 @@ class CommunityFragment : Fragment() {
             stepNumTvs.add(numTv)
             row.addView(numTv)
             val lineH = dp(22)
-            val minLines = when (s.n) { 2, 3 -> 3; else -> 1 }
+            val minL = when (s.n) { 2, 3 -> 3; else -> 1 }
             val txtTv = makeTv(s.t, 14f, textPri, sel = true).apply {
                 gravity = Gravity.TOP or Gravity.START
                 setLineSpacing(dp(4).toFloat(), 1.0f)
                 includeFontPadding = false
-                minHeight = lineH * minLines
+                minHeight = lineH * minL
                 setPadding(0, dp(2), 0, dp(2))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
@@ -322,7 +339,6 @@ class CommunityFragment : Fragment() {
         }
         container.addView(dividerView)
 
-        // Entry
         val ebd = GradientDrawable().apply {
             setColor(cardBg); setStroke(dp(2), accent); cornerRadius = 0f
         }
@@ -340,7 +356,7 @@ class CommunityFragment : Fragment() {
         entry.addView(ImageView(ctx).apply {
             setImageResource(R.drawable.sulor_logo)
             val sz = dp(72)
-            layoutParams = LinearLayout.LayoutParams(sz, sz).apply { bottomMargin = dp(12) }
+            layoutParams = LinearLayout.LayoutParams(sz, sz).apply { bottomMargin = dp(10) }
             scaleType = ImageView.ScaleType.CENTER_CROP
         })
         tvEntryName = makeTv("Sulor Game", 16f, accent, bold = true).also { entry.addView(it) }
@@ -381,6 +397,7 @@ class CommunityFragment : Fragment() {
             }
             android.webkit.CookieManager.getInstance().setAcceptCookie(true)
             android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     backBtn?.isEnabled = true; backBtn?.alpha = 1.0f
@@ -388,14 +405,68 @@ class CommunityFragment : Fragment() {
                 override fun shouldOverrideUrlLoading(view: WebView, req: android.webkit.WebResourceRequest): Boolean {
                     val url = req.url.toString()
                     if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                        try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, req.url)) }
+                        try { startActivity(Intent(Intent.ACTION_VIEW, req.url)) }
                         catch (_: Exception) {}
                         return true
                     }
                     return false
                 }
             }
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                // 文件/图片选择（上传头像、游戏封面等）
+                override fun onShowFileChooser(
+                    webView: WebView?,
+                    cb: android.webkit.ValueCallback<Array<Uri>>?,
+                    params: FileChooserParams?
+                ): Boolean {
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = cb
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        params?.acceptTypes?.let {
+                            if (it.isNotEmpty() && it[0].isNotEmpty()) {
+                                putExtra(Intent.EXTRA_MIME_TYPES, it)
+                                type = if (it.size == 1) it[0] else "*/*"
+                            }
+                        }
+                    }
+                    return try {
+                        fileChooser.launch(Intent.createChooser(intent, "选择文件"))
+                        true
+                    } catch (e: Exception) {
+                        filePathCallback = null
+                        false
+                    }
+                }
+            }
+
+            // 长按图片保存
+            setOnLongClickListener { v ->
+                val wv = v as? WebView ?: return@setOnLongClickListener false
+                val result = wv.hitTestResult
+                if (result != null && (result.type == WebView.HitTestResult.IMAGE_TYPE ||
+                        result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                    val imgUrl = result.extra
+                    if (!imgUrl.isNullOrEmpty()) {
+                        AlertDialog.Builder(ctx)
+                            .setItems(arrayOf("保存图片到相册")) { _, _ ->
+                                ImageSaver.saveImageFromUrl(ctx, imgUrl)
+                            }
+                            .show()
+                        return@setOnLongClickListener true
+                    }
+                }
+                false
+            }
+
+            // 支持下载
+            setDownloadListener { url, _, _, mimetype, _ ->
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    startActivity(intent)
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -409,16 +480,17 @@ class CommunityFragment : Fragment() {
 
     override fun onPause() { super.onPause(); webView?.onPause() }
 
-    override fun onDestroyView() { destroyWebView(); super.onDestroyView() }
+    override fun onDestroyView() {
+        filePathCallback?.onReceiveValue(null)
+        filePathCallback = null
+        destroyWebView()
+        super.onDestroyView()
+    }
 
     private fun dp(v: Int): Int {
         val d = resources.displayMetrics.density
         return (v * d + 0.5f).toInt()
     }
-
-    // Local helper to avoid needing ContextCompat import for colors
-    private fun ContextCompat_getColor(ctx: android.content.Context, res: Int): Int =
-        androidx.core.content.ContextCompat.getColor(ctx, res)
 
     companion object {
         private const val COMMUNITY_URL = "https://sulor.yanyususu.online/"
