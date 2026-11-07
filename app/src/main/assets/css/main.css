@@ -31,6 +31,8 @@
 /* ==================== 榜单标签筛选 ==================== */
 .rank-tags { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; }
 .rank-tags::-webkit-scrollbar { display: none; }
+/* 分类标签：Android WebView 触摸横向滑动（含惯性） */
+.rank-tags { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
 .rank-tag { flex: 0 0 auto; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-light); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap; }
 .rank-tag:hover { color: var(--taptap-cyan); border-color: var(--taptap-cyan); }
 .rank-tag.is-active { background: var(--taptap-cyan); border-color: var(--taptap-cyan); color: #fff; }
@@ -235,3 +237,28 @@
 .view-switch .vs-btn { flex: 1 1 0 !important; min-width: 0 !important; padding-left: 4px !important; padding-right: 4px !important; gap: 4px !important; }
 .view-switch .vs-btn > span { white-space: nowrap !important; word-break: keep-all !important; }
 .view-switch .vs-btn > svg { width: 14px; height: 14px; flex: 0 0 auto; }
+
+/* ===== 榜单动量：今日飙升 / 行内走势 / 热榜强调 ===== */
+.rank-movers { background: var(--bg-card); border-radius: 14px; padding: 10px 12px 6px; margin: 2px 0 10px; box-shadow: var(--shadow-card); }
+.rank-movers[hidden] { display: none; }
+.rm-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 800; color: var(--text-primary); padding-bottom: 6px; border-bottom: 1px solid var(--border-light); }
+.rm-head span { font-size: 10px; font-weight: 400; color: var(--text-tertiary); }
+.rm-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.rm-row:last-child { border-bottom: none; }
+.rm-no { width: 14px; flex: 0 0 14px; font-size: 12px; font-weight: 800; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.rm-icon { width: 24px; height: 24px; border-radius: 6px; flex: 0 0 24px; object-fit: cover; background: var(--bg-muted); }
+.rm-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rm-board { flex: 0 0 auto; font-size: 10px; color: var(--text-tertiary); background: var(--bg-muted); border-radius: 4px; padding: 1px 5px; }
+.rm-pct { flex: 0 0 auto; font-size: 14px; font-weight: 800; color: #ef4444; font-variant-numeric: tabular-nums; }
+.rank-spark { display: block; margin: 1px 0 0 auto; }
+.rank-row.is-hot { box-shadow: inset 3px 0 0 #ef4444; }
+.rank-row.is-hot .rank-heat-val { color: #ef4444; }
+.rd-spark { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.rd-spark svg.rank-spark { width: 92px; height: 24px; margin: 0; }
+.rd-spark span { font-size: 11px; color: var(--text-tertiary); }
+
+/* 名次变化：独立小胶囊，避免和名次数字连在一起看成 “13” */
+.rank-page .rank-no { gap: 2px; }
+.rank-move { display: inline-block; font-size: 9px; font-weight: 800; line-height: 1.25; padding: 0 3px; border-radius: 4px; letter-spacing: 0; }
+.rank-move.up { color: #ef4444; background: rgba(239, 68, 68, .12); }
+.rank-move.down { color: #10b981; background: rgba(16, 185, 129, .12); }
