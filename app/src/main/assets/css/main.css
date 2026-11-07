@@ -260,3 +260,43 @@
 .rank-move { display: inline-block; font-size: 9px; font-weight: 800; line-height: 1.25; padding: 0 3px; border-radius: 4px; letter-spacing: 0; }
 .rank-move.up { color: #ef4444; background: rgba(239, 68, 68, .12); }
 .rank-move.down { color: #10b981; background: rgba(16, 185, 129, .12); }
+
+/* ===== 今日上新：日历汇总 / 双维筛选 / 类型徽标 ===== */
+.cal-summary { background: var(--bg-card); border-radius: 14px; padding: 14px 14px 12px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
+.cal-summary-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.cal-summary-head b { font-size: 16px; font-weight: 800; color: var(--text-primary); }
+.cal-summary-head span { font-size: 11px; color: var(--text-tertiary); }
+.cal-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cal-sum-item { background: var(--bg-muted); border-radius: 10px; padding: 8px 6px; text-align: center; }
+.cal-sum-item b { display: block; font-size: 20px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cal-sum-item span { display: block; margin-top: 2px; font-size: 10px; color: var(--text-tertiary); }
+.cal-sum-item.is-launch b { color: #ef4444; }
+.cal-sum-item.is-test b { color: #3b82f6; }
+.cal-sum-item.is-reserve b { color: #8b5cf6; }
+.cal-sum-item.is-maker b { color: var(--accent, #25b6e9); }
+
+.cal-filters { margin: 2px 0 8px; }
+.cal-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.cal-chip { border: 1px solid var(--border-light); background: var(--bg-card); color: var(--text-secondary); border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.cal-chip b { font-weight: 800; color: var(--text-tertiary); margin-left: 2px; }
+.cal-chip.is-active { background: var(--accent, #25b6e9); border-color: var(--accent, #25b6e9); color: #fff; }
+.cal-chip.is-active b { color: rgba(255,255,255,.85); }
+
+.cal-row { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.cal-row:last-child { border-bottom: none; }
+.cal-row:active { background: var(--bg-muted); }
+.cal-row .rank-icon { width: 40px; height: 40px; flex: 0 0 40px; }
+.cal-row .rank-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.cal-reserve { flex: 0 0 auto; text-align: right; min-width: 54px; }
+.cal-reserve b { display: block; font-size: 13px; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.cal-reserve span { font-size: 9px; color: var(--text-tertiary); }
+.cal-badge { display: inline-block; font-size: 9px; font-weight: 700; line-height: 1.4; padding: 0 5px; border-radius: 4px; white-space: nowrap; }
+.cal-b-launch { color: #ef4444; background: rgba(239,68,68,.12); }
+.cal-b-test { color: #3b82f6; background: rgba(59,130,246,.12); }
+.cal-b-reserve { color: #8b5cf6; background: rgba(139,92,246,.12); }
+.cal-b-maker { color: var(--accent, #25b6e9); background: rgba(37,182,233,.14); }
+.rd-dev { margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+
+/* 回顶/回底按钮：提高可见度（Android WebView 上 0.55 透明度太不显眼） */
+.rank-scroll-btn.is-show { opacity: .92 !important; border-color: var(--accent, #25b6e9) !important; color: var(--accent, #25b6e9) !important; background: var(--bg-card) !important; }
+.rank-scroll-btn.is-show:active { opacity: 1 !important; transform: scale(.94); }

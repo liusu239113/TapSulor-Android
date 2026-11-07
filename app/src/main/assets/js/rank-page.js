@@ -14,6 +14,8 @@
   const MAKER_TAG = 'TapTap制造';
   const STORE = 'rank_history_v1';
   const PAGE = 10;
+  // TapTap「今日游戏」日历：按天返回首发 / 测试 / 预约，含 total
+  const CAL_URL = 'https://www.taptap.cn/webapiv2/calendar/v1/event-list';
   const XUA = 'V=1&PN=WebApp&LANG=zh_CN&VN_CODE=100000000&LOC=CN&PLT=PC&DS=Android&UID=' + 'zpad' + '&OS=Windows&OSV=10&DT=PC';
   function uuid() {
     let u = localStorage.getItem('rank_uuid');
@@ -26,7 +28,10 @@
 
   window.__imgErr = function (img) { img.onerror = null; img.src = 'app-icon.png'; };
 
-  const state = { board: 'hot', tag: '', data: {}, hist: {}, loadedAt: null };
+  const state = {
+    board: 'hot', tag: '', data: {}, hist: {}, loadedAt: null,
+    cal: null, calError: null, calAt: 0, calType: 'all', calSource: 'all'
+  };
   const $ = (id) => document.getElementById(id);
 
   function uid() {
@@ -139,6 +144,48 @@
     return items;
   }
 
+  /** 今日游戏日历：一次请求拿到今天所有首发/测试/预约 */
+  async function fetchCalendar() {
+    const d = new Date();
+    const day = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
+    const url = CAL_URL + '?day=' + day + '&X-UA=' + encodeURIComponent(xua());
+    const j = await getJson(url);
+    if (!j || !j.data) throw new Error('今日游戏接口返回失败');
+    const raw = [];
+    ['list_a', 'list_b', 'list_c'].forEach(k => (j.data[k] || []).forEach(x => raw.push(x)));
+    const map = new Map();
+    raw.forEach(ev => {
+      const a = ev.app_card_info || {};
+      if (!a.id) return;
+      const prev = map.get(a.id);
+      // 同一游戏当天可能有多个事件：优先保留「首发」
+      if (!prev || (ev.event_type === 1 && prev.event_type !== 1)) map.set(a.id, ev);
+    });
+    const items = [...map.values()].map(ev => {
+      const a = ev.app_card_info || {};
+      const s = a.stat || {};
+      const tags = (a.tags || []).map(t => (t && t.value) || '').filter(Boolean);
+      const devs = (a.developers || []).map(x => (x && x.name) || '').filter(Boolean);
+      return {
+        id: String(a.id),
+        title: a.title || '',
+        icon: a.icon && (a.icon.small_url || a.icon.medium_url || a.icon.url),
+        type: ev.sub_event_type_title || '其他',
+        eventType: ev.event_type || 0,
+        startTime: (ev.start_time || 0) * 1000,
+        dateOnly: !!ev.is_date_only,
+        maker: tags.indexOf(MAKER_TAG) >= 0,
+        tags,
+        devs,
+        reserve: s.reserve_count || 0,
+        fans: s.fans_count || 0,
+        reviews: s.review_count || 0,
+        score: s.rating && s.rating.score
+      };
+    });
+    return { total: j.data.game_total || items.length, items, at: Date.now() };
+  }
+
   function saveSnap(key, items) {
     let all = {};
     try { all = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (_) {}
@@ -239,11 +286,128 @@
       ).join('') + '</div>';
   }
 
+  const fmtClock = (ts) => { const d = new Date(ts); const p = x => String(x).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()); };
+  const calTypeRank = (t) => t === '首发' ? 0 : (t.indexOf('测试') >= 0 ? 1 : 2);
+  const calBadgeCls = (t) => t === '首发' ? 'cal-b-launch' : (t.indexOf('测试') >= 0 ? 'cal-b-test' : 'cal-b-reserve');
+
+  /** 「今日」分类：TapTap 今日游戏日历，首发/测试/预约 × 制造/非制造 */
+  function renderToday(list) {
+    $('tags').innerHTML = '';
+    $('hint').textContent = '数据来自 TapTap 今日游戏日历';
+    const cal = state.cal;
+    if (state.calError && !cal) {
+      list.innerHTML = '<div class="empty">今日游戏加载失败：' + esc(state.calError) + '</div>';
+      return;
+    }
+    if (!cal) { list.innerHTML = '<div class="empty">今日游戏加载中…</div>'; return; }
+
+    const items = cal.items || [];
+    const isTest = (t) => t.indexOf('测试') >= 0;
+    const count = {
+      all: items.length,
+      launch: items.filter(x => x.type === '首发').length,
+      test: items.filter(x => isTest(x.type)).length,
+      reserve: items.filter(x => x.type === '新游预约').length,
+      maker: items.filter(x => x.maker).length
+    };
+    count.other = count.all - count.maker;
+
+    const matchType = (x) => state.calType === 'all' ? true
+      : state.calType === 'launch' ? x.type === '首发'
+        : state.calType === 'test' ? isTest(x.type)
+          : x.type === '新游预约';
+    const matchSrc = (x) => state.calSource === 'all' ? true
+      : (state.calSource === 'maker' ? x.maker : !x.maker);
+    const shown = items.filter(x => matchType(x) && matchSrc(x))
+      .sort((a, b) => calTypeRank(a.type) - calTypeRank(b.type) || (b.reserve - a.reserve));
+
+    const d = new Date(cal.at || Date.now());
+    const dateStr = (d.getMonth() + 1) + '-' + String(d.getDate()).padStart(2, '0');
+    const chip = (dim, val, label, n, active) =>
+      '<button class="cal-chip' + (active ? ' is-active' : '') + '" data-dim="' + dim + '" data-v="' + val + '">' + label + ' <b>' + n + '</b></button>';
+
+    const head = '<div class="cal-summary">' +
+      '<div class="cal-summary-head"><b>今日上新 ' + count.all + ' 款</b><span>' + dateStr + '</span></div>' +
+      '<div class="cal-summary-grid">' +
+        '<div class="cal-sum-item is-launch"><b>' + count.launch + '</b><span>首发</span></div>' +
+        '<div class="cal-sum-item is-test"><b>' + count.test + '</b><span>测试</span></div>' +
+        '<div class="cal-sum-item is-reserve"><b>' + count.reserve + '</b><span>预约</span></div>' +
+        '<div class="cal-sum-item is-maker"><b>' + count.maker + '</b><span>制造</span></div>' +
+      '</div></div>';
+
+    const filters = '<div class="cal-filters">' +
+      '<div class="cal-chip-row">' +
+        chip('type', 'all', '全部', count.all, state.calType === 'all') +
+        chip('type', 'launch', '首发', count.launch, state.calType === 'launch') +
+        chip('type', 'test', '测试', count.test, state.calType === 'test') +
+        chip('type', 'reserve', '预约', count.reserve, state.calType === 'reserve') +
+      '</div><div class="cal-chip-row">' +
+        chip('source', 'all', '全部来源', count.all, state.calSource === 'all') +
+        chip('source', 'maker', 'TapTap制造', count.maker, state.calSource === 'maker') +
+        chip('source', 'other', '非制造', count.other, state.calSource === 'other') +
+      '</div></div>';
+
+    const rows = shown.map(it => {
+      const meta = [
+        it.dateOnly ? '今日' : fmtClock(it.startTime),
+        Number(it.score) > 0 ? '评分 ' + it.score : '',
+        it.tags.filter(t => t !== MAKER_TAG).slice(0, 2).join(' / ')
+      ];
+      return '<div class="cal-row" data-id="' + esc(it.id) + '">' +
+        '<img class="rank-icon" src="' + (it.icon || '') + '" loading="lazy">' +
+        '<div class="rank-main"><div class="rank-title">' + esc(it.title) +
+          ' <span class="cal-badge ' + calBadgeCls(it.type) + '">' + esc(it.type) + '</span>' +
+          (it.maker ? ' <span class="cal-badge cal-b-maker">制造</span>' : '') + '</div>' +
+        '<div class="rank-sub">' + meta.filter(Boolean).map(esc).join(' · ') + '</div></div>' +
+        '<div class="cal-reserve"><b>' + fmtHeat(it.reserve) + '</b><span>预约</span></div>' +
+      '</div>';
+    }).join('');
+
+    list.innerHTML = head + filters + (shown.length ? rows : '<div class="empty">该筛选下暂无游戏</div>');
+    list.querySelectorAll('.cal-chip').forEach(b => b.addEventListener('click', () => {
+      const v = b.getAttribute('data-v');
+      if (b.getAttribute('data-dim') === 'type') state.calType = v; else state.calSource = v;
+      renderToday(list);
+    }));
+    list.querySelectorAll('.cal-row').forEach(el => el.addEventListener('click', () => {
+      const it = shown.find(x => x.id === el.getAttribute('data-id'));
+      if (it) openCalDetail(it);
+    }));
+  }
+
+  function openCalDetail(it) {
+    const cell = (k, v) => '<div class="rd-cell"><span>' + k + '</span><b>' + v + '</b></div>';
+    const host = document.createElement('div');
+    host.id = 'rd-host';
+    host.innerHTML = '<div class="rank-detail-mask" id="rd-mask"></div>' +
+      '<div class="rank-detail-panel" id="rd-panel">' +
+      '<div class="rd-head"><img class="rd-icon" src="' + (it.icon || '') + '">' +
+      '<div class="rd-info"><div class="rd-title">' + esc(it.title) + '</div>' +
+      '<div class="rd-sub">' + esc(it.type) + (it.maker ? ' · TapTap制造' : '') + '</div></div>' +
+      '<button class="rd-close" id="rd-close">×</button></div>' +
+      '<div class="rd-grid">' +
+        cell('类型', esc(it.type)) +
+        cell('开始时间', it.dateOnly ? '今日' : fmtClock(it.startTime)) +
+        cell('预约', fmtHeat(it.reserve)) +
+        cell('粉丝', fmtHeat(it.fans)) +
+        cell('评价', fmtHeat(it.reviews)) +
+        cell('评分', Number(it.score) > 0 ? it.score : '—') +
+      '</div>' +
+      (it.devs.length ? '<div class="rd-dev">厂商：' + esc(it.devs.join(' / ')) + '</div>' : '') +
+      '<div class="rd-tags">' + (it.tags || []).map(t => '<span class="rank-tag">' + esc(t) + '</span>').join('') + '</div>' +
+      '</div>';
+    document.body.appendChild(host);
+    document.getElementById('rd-close').addEventListener('click', closeDetail);
+    document.getElementById('rd-mask').addEventListener('click', closeDetail);
+  }
+
   function render() {
     renderTags();
     $('updated').textContent = state.loadedAt ? ('更新于 ' + fmtTime(state.loadedAt) + ' · 每 20 分钟') : '尚未加载';
     const list = $('list');
     const b = state.board;
+
+    if (b === 'today') { renderToday(list); return; }
 
     if (b === 'summary') {
       const merged = new Map();
@@ -305,9 +469,13 @@
     $('list').innerHTML = '<div class="empty">榜单加载中…</div>';
     try {
       const errors = [];
-      const results = await Promise.all(BOARDS.map(b => fetchBoard(b.key, b.total).catch(e => { errors.push(b.label + ': ' + (e.message || e)); return []; })));
+      const [results, cal] = await Promise.all([
+        Promise.all(BOARDS.map(b => fetchBoard(b.key, b.total).catch(e => { errors.push(b.label + ': ' + (e.message || e)); return []; }))),
+        fetchCalendar().catch(e => { state.calError = e.message || String(e); return null; })
+      ]);
+      if (cal) { state.cal = cal; state.calError = null; }
       BOARDS.forEach((b, i) => { state.data[b.key] = results[i] || []; });
-      if (errors.length === BOARDS.length) {
+      if (errors.length === BOARDS.length && !cal) {
         $('list').innerHTML = '<div class="empty">榜单请求失败<br>' + errors.map(esc).join('<br>') + '</div>';
         return;
       }
@@ -338,7 +506,7 @@
       '<div class="rd-cell"><span>' + (m.win1 ? winLabel(m.win1) : '1 小时') + '涨幅</span><b class="' + clsOf(m.p1) + '">' + pct(m.p1) + '</b></div>' +
       '<div class="rd-cell"><span>24 小时涨幅</span><b class="' + clsOf(m.p24) + '">' + pct(m.p24) + '</b></div>' +
       '<div class="rd-cell"><span>名次变化</span><b class="' + clsOf(m.rankDelta) + '">' + rd + '</b></div>' +
-      '<div class="rd-cell"><span>评分</span><b>' + (it.score || '—') + '</b></div>' +
+      '<div class="rd-cell"><span>评分</span><b>' + (Number(it.score) > 0 ? it.score : '—') + '</b></div>' +
       '<div class="rd-cell"><span>评价</span><b>' + fmtHeat(it.reviews || 0) + '</b></div>' +
       '<div class="rd-cell"><span>粉丝</span><b>' + fmtHeat(it.fans || 0) + '</b></div>' +
       '</div>' +
