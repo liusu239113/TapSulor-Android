@@ -96,7 +96,8 @@ class TapTapApiClient(private val accountManager: AccountManager) {
     /** 带自定义请求头的 POST（body 为空对象的 JSON） */
     suspend fun postWithHeaders(url: String, headers: Map<String, String>): FetchResult = withContext(Dispatchers.IO) {
         try {
-            val body = okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), "{}")
+            val jsonType = okhttp3.MediaType.Companion.toMediaType("application/json")
+            val body = okhttp3.RequestBody.Companion.toRequestBody("{}", jsonType)
             val b = Request.Builder()
                 .url(url)
                 .post(body)
