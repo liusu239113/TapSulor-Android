@@ -259,6 +259,17 @@ class WebAppInterface(
             wv.settings.userAgentString = wv.settings.userAgentString.replace("; wv", "")
             val cm = android.webkit.CookieManager.getInstance()
             cm.setAcceptCookie(true); cm.setAcceptThirdPartyCookies(wv, true)
+            // 关键：把当前账号在 OkHttp 里的登录 Cookie 同步进 WebView，否则后台页面是未登录状态
+            try {
+                val accId = accountManager.getCurrentAccountId()
+                listOf("https://developer.taptap.cn/", "https://accounts.taptap.cn/", "https://rep.taptap.cn/").forEach { u ->
+                    val url = okhttp3.HttpUrl.get(u) ?: return@forEach
+                    accountManager.getCookiesForUrl(accId, url).forEach { c ->
+                        cm.setCookie(u, c.name + "=" + c.value)
+                    }
+                }
+                cm.flush()
+            } catch (e: Exception) { }
             var settled = false
             fun done(payload: String) {
                 if (settled) return

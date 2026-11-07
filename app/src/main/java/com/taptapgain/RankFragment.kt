@@ -7,7 +7,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import android.widget.FrameLayout
 import androidx.fragment.app.Fragment
 
@@ -39,7 +43,14 @@ class RankFragment : Fragment() {
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         }
         wv.setBackgroundColor(0xFF0F141B.toInt())
-        wv.webViewClient = WebViewClient()
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(ctx))
+            .build()
+        wv.webViewClient = object : WebViewClientCompat() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request.url)
+            }
+        }
 
         val act = requireActivity()
         val accountManager = AccountManager(act)
@@ -47,7 +58,7 @@ class RankFragment : Fragment() {
         val updateChecker = UpdateChecker(act)
         WebAppInterface(requireActivity(), wv, accountManager, apiClient, updateChecker).register()
 
-        wv.loadUrl("file:///android_asset/rank.html")
+        wv.loadUrl("https://appassets.androidplatform.net/assets/rank.html")
         webView = wv
         return wv
     }

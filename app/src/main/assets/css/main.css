@@ -190,21 +190,28 @@
 
 
 
-/* ===== 热度榜手机端紧凑布局（覆盖桌面窄屏不适配的问题）===== */
-.rank-page .app { padding: 10px 10px 18px !important; max-width: none !important; }
-.rank-page .rank-toolbar { gap: 8px; margin-bottom: 8px; }
-.rank-page .rank-boards { padding: 3px; gap: 4px; overflow-x: auto; }
-.rank-page .rank-board { padding: 6px 12px; font-size: 12px; white-space: nowrap; }
-.rank-page .rank-meta { font-size: 11px; }
-.rank-page .rank-search input { padding: 9px 12px; font-size: 12px; }
-.rank-page .rank-search-btn { padding: 0 14px; font-size: 12px; }
-.rank-page .rank-list { padding: 4px 6px; }
-.rank-page .rank-row { gap: 8px; padding: 9px 4px; }
-.rank-page .rank-no { width: 34px; flex: 0 0 34px; font-size: 14px; }
-.rank-page .rank-icon { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 7px; }
-.rank-page .rank-title { font-size: 13px; }
-.rank-page .rank-sub { font-size: 10px; }
-.rank-page .rank-heat-val { font-size: 13px; }
-.rank-page .rank-heat-delta { font-size: 10px; }
-.rank-page .rank-spark-wrap { display: none; }
-.rank-page .rank-hint { font-size: 10px; padding: 2px 2px 8px; }
+
+
+/* ===== 热度榜：沿用首页 .game-card 的视觉语言（同一套 token，不另起风格） ===== */
+.rank-page .app { padding: 12px 16px 24px; max-width: none; }
+.rank-page .rank-list { display: flex; flex-direction: column; gap: 12px; background: transparent; box-shadow: none; padding: 0; }
+.rank-page .rank-row {
+  background: var(--bg-card);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px;
+  gap: 14px;
+  transition: transform .2s, box-shadow .2s, border-color .2s;
+}
+.rank-page .rank-row:active { transform: translateY(0); }
+.rank-page .rank-no { width: 40px; flex: 0 0 40px; font-size: 16px; font-weight: 700; color: var(--taptap-cyan-dark); }
+.rank-page .rank-icon { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 10px; background: var(--taptap-cyan-light); }
+.rank-page .rank-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.rank-page .rank-sub { font-size: 12px; color: var(--text-tertiary); }
+.rank-page .rank-heat-val { font-size: 15px; font-weight: 700; }
+.rank-page .rank-heat-delta { font-size: 11px; }
+.rank-page .rank-board, .rank-page .rank-tag, .rank-page .rank-refresh, .rank-page .rank-search-btn { font-family: inherit; }
+.rank-page .rank-boards { background: var(--bg-card); box-shadow: var(--shadow-card); }
+.rank-page .rank-search input { background: var(--bg-card); box-shadow: var(--shadow-card); border-radius: 12px; height: 38px; font-size: 14px; }
+.rank-page .rank-hint { color: var(--text-tertiary); font-size: 12px; padding: 4px 2px 10px; }
