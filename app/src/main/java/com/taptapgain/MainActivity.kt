@@ -119,8 +119,8 @@ class MainActivity : AppCompatActivity() {
                     return null
                 }
 
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    val uri = request?.url ?: return false
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    val uri = request.url
                     val scheme = uri.scheme?.lowercase() ?: return false
                     // 非 http(s)（mailto/tel/自定 scheme）交给系统处理
                     if (scheme != "http" && scheme != "https") {

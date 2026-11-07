@@ -7,6 +7,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.google.gson.Gson
 import kotlinx.coroutines.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 class WebAppInterface(
     private val activity: Activity,
@@ -199,7 +200,7 @@ class WebAppInterface(
             try {
                 val accId = accountManager.getCurrentAccountId()
                 listOf("https://developer.taptap.cn/", "https://accounts.taptap.cn/", "https://rep.taptap.cn/").forEach { u ->
-                    val url = okhttp3.HttpUrl.get(u) ?: return@forEach
+                    val url = u.toHttpUrlOrNull() ?: return@forEach
                     accountManager.getCookiesForUrl(accId, url).forEach { c -> cm.setCookie(u, c.name + "=" + c.value) }
                 }
                 cm.flush()
@@ -272,7 +273,7 @@ class WebAppInterface(
             try {
                 val accId = accountManager.getCurrentAccountId()
                 listOf("https://developer.taptap.cn/", "https://accounts.taptap.cn/", "https://rep.taptap.cn/").forEach { u ->
-                    val url = okhttp3.HttpUrl.get(u) ?: return@forEach
+                    val url = u.toHttpUrlOrNull() ?: return@forEach
                     accountManager.getCookiesForUrl(accId, url).forEach { c ->
                         cm.setCookie(u, c.name + "=" + c.value)
                     }

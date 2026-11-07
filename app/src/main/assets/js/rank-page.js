@@ -89,8 +89,8 @@
     const t1 = now - 3600000, t24 = now - 24 * 3600000;
     let base1 = null, base24 = null;
     for (const s of arr) { if (s.ts <= t1) base1 = s; if (s.ts <= t24) base24 = s; }
-    // 历史不足 1 小时时，用最早一个 ≥1 分钟前的点做基准，至少能看出“刚开始涨没涨”
-    if (!base1 && arr.length && now - arr[0].ts >= 60000) base1 = arr[0];
+    // 历史不足 1 小时时，用最早一个 ≥3 分钟的点做基准（太短的窗口噪声大）
+    if (!base1 && arr.length && now - arr[0].ts >= 3 * 60000) base1 = arr[0];
     const hitOf = (s) => {
       if (!s) return null;
       const x = (s.items || []).find(i => i.id === item.id);
@@ -198,8 +198,8 @@
       delta = '<div class="rank-heat-delta flat">' + (m.series.length > 1 ? '走势记录中' : '记录中') + '</div>';
     } else {
       const cls = p1 > 0.05 ? 'up' : (p1 < -0.05 ? 'down' : 'flat');
-      delta = '<div class="rank-heat-delta ' + cls + '">' + winLabel(m.win1 || 3600000) + ' ' +
-        (p1 > 0 ? '+' : '') + p1.toFixed(1) + '%</div>';
+      const body = Math.abs(p1) < 0.05 ? '持平' : ((p1 > 0 ? '+' : '') + p1.toFixed(1) + '%');
+      delta = '<div class="rank-heat-delta ' + cls + '">' + winLabel(m.win1 || 3600000) + ' ' + body + '</div>';
     }
     const hot = isHot ? ' is-hot' : '';
     return '<div class="rank-row' + hot + '">' +
@@ -211,32 +211,24 @@
     '</div>';
   }
 
-  /** 顶部“今日飙升”：跟随当前榜单 + 分类标签筛选，按热度涨幅排序 */
-  function renderMovers() {
-    const box = $('movers');
-    if (!box) return;
-    const boardKeys = (state.board === 'maker' || state.board === 'summary')
-      ? BOARDS.map(b => b.key) : [state.board];
+  /** 汇总页的“今日飙升”：三榜合并、跟随分类标签，按热度涨幅排 TOP5 */
+  function moversCard() {
     const byId = new Map();
-    for (const key of boardKeys) {
-      for (const it of (state.data[key] || [])) {
+    for (const b of BOARDS) {
+      for (const it of (state.data[b.key] || [])) {
         if ((it.hits || 0) < 5000) continue;
-        if (state.board === 'maker' && !(it.tags || []).includes(MAKER_TAG)) continue;
         if (!matchTag(it)) continue;
-        const m = momentum(key, it);
+        const m = momentum(b.key, it);
         if (m.p1 == null || m.p1 <= 0.5 || m.h1Delta <= 0) continue;
         const prev = byId.get(it.id);
         if (!prev || m.p1 > prev.m.p1) byId.set(it.id, { it, m });
       }
     }
-    const rows = [...byId.values()];
-    if (!rows.length) { box.hidden = true; box.innerHTML = ''; return; }
-    const top = rows.sort((a, b2) => b2.m.p1 - a.m.p1).slice(0, 5);
+    const top = [...byId.values()].sort((a, b2) => b2.m.p1 - a.m.p1).slice(0, 5);
+    if (!top.length) return '';
     const win = top[0].m.win1 ? winLabel(top[0].m.win1) : '1小时';
-    const scope = state.tag ? ' · ' + state.tag
-      : (state.board === 'summary' ? '' : ' · ' + ((BOARDS.find(x => x.key === state.board) || {}).label || ''));
-    box.hidden = false;
-    box.innerHTML = '<div class="rm-head">今日飙升<span>近' + win + '热度涨幅' + esc(scope) + '</span></div>' +
+    return '<div class="rank-sum-card rank-movers-card"><h3>今日飙升<span>近' + win + '热度涨幅' +
+      (state.tag ? ' · ' + esc(state.tag) : '') + '</span></h3>' +
       top.map(({ it, m }, i) =>
         '<div class="rm-row" data-id="' + esc(it.id) + '">' +
           '<span class="rm-no">' + (i + 1) + '</span>' +
@@ -244,15 +236,11 @@
           '<span class="rm-name">' + esc(it.title) + '</span>' +
           '<span class="rm-pct">+' + m.p1.toFixed(1) + '%</span>' +
         '</div>'
-      ).join('');
-    box.querySelectorAll('.rm-row').forEach(el => {
-      el.addEventListener('click', () => openDetail(el.getAttribute('data-id')));
-    });
+      ).join('') + '</div>';
   }
 
   function render() {
     renderTags();
-    renderMovers();
     $('updated').textContent = state.loadedAt ? ('更新于 ' + fmtTime(state.loadedAt) + ' · 每 20 分钟') : '尚未加载';
     const list = $('list');
     const b = state.board;
@@ -276,7 +264,11 @@
           '<div class="rank-main"><div class="rank-title">' + esc(r.title) + '</div><div class="rank-sub">' + esc(r.boardLabel) + ' · 热度 ' + fmtHeat(r.hits) + '</div></div>' +
           '<div class="rank-heat"><div class="rank-heat-val ' + d.cls + '">' + (showDelta ? d.text : '') + '</div></div></div>';
       }).join('') + '</div>' : '';
-      list.innerHTML = card('涨幅榜', up, true) + card('热度榜', top, false) + (up.length || top.length ? '' : '<div class="empty">暂无数据</div>');
+      list.innerHTML = moversCard() + card('涨幅榜', up, true) + card('热度榜', top, false) +
+        (up.length || top.length ? '' : '<div class="empty">暂无数据</div>');
+      list.querySelectorAll('.rm-row').forEach(el => {
+        el.addEventListener('click', () => openDetail(el.getAttribute('data-id'), '汇总'));
+      });
       return;
     }
 
@@ -385,7 +377,8 @@
       const m = momentum(h.boardKey, h);
       const p1 = m.p1;
       const cls = p1 == null ? 'flat' : (p1 > 0.05 ? 'up' : (p1 < -0.05 ? 'down' : 'flat'));
-      const txt = p1 == null ? '记录中' : (winLabel(m.win1 || 3600000) + ' ' + (p1 > 0 ? '+' : '') + p1.toFixed(1) + '%');
+      const txt = p1 == null ? '记录中'
+        : (winLabel(m.win1 || 3600000) + ' ' + (Math.abs(p1) < 0.05 ? '持平' : ((p1 > 0 ? '+' : '') + p1.toFixed(1) + '%')));
       return '<div class="rank-row' + (p1 != null && p1 >= 8 ? ' is-hot' : '') + '"><div class="rank-no">#' + h.rank + '</div>' +
         '<img class="rank-icon" src="' + (h.icon || '') + '" loading="lazy">' +
         '<div class="rank-main"><div class="rank-title">' + esc(h.title) + '</div><div class="rank-sub">' + esc(h.boardLabel) + ' · 评分 ' + (h.score || '—') + ' · 热度 ' + fmtHeat(h.hits) + '</div></div>' +
@@ -394,6 +387,29 @@
     $('list').querySelectorAll('.rank-row').forEach((el, i) => {
       el.addEventListener('click', () => openDetail(shown[i].id, shown[i].boardLabel, shown[i].boardKey));
     });
+  }
+
+  /** 回到顶部 / 回到底部：滚动超过一屏才出现，避免挡住内容 */
+  function bindScrollButtons() {
+    const top = $('to-top'), bottom = $('to-bottom');
+    if (!top || !bottom) return;
+    let raf = 0;
+    function update() {
+      raf = 0;
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      top.classList.toggle('is-show', y > 320);
+      bottom.classList.toggle('is-show', max - y > 320);
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    // 列表内容变化（切换榜单/筛选/搜索）后页面高度会变，重新判断按钮显隐
+    const list = $('list');
+    if (list && window.MutationObserver) new MutationObserver(onScroll).observe(list, { childList: true, subtree: false });
+    top.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    bottom.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+    update();
   }
 
   function bind() {
@@ -411,6 +427,7 @@
     $('refresh').addEventListener('click', () => load(true));
     $('qbtn').addEventListener('click', doSearch);
     $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+    bindScrollButtons();
     load(false);
     setInterval(() => load(true), 20 * 60 * 1000);
   }

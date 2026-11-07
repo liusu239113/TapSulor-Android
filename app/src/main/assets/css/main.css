@@ -29,10 +29,8 @@
 .rank-detail { margin: 8px 0 10px; }
 
 /* ==================== 榜单标签筛选 ==================== */
-.rank-tags { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; }
+.rank-tags { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; padding: 2px 0 10px; }
 .rank-tags::-webkit-scrollbar { display: none; }
-/* 分类标签：Android WebView 触摸横向滑动（含惯性） */
-.rank-tags { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
 .rank-tag { flex: 0 0 auto; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-light); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap; }
 .rank-tag:hover { color: var(--taptap-cyan); border-color: var(--taptap-cyan); }
 .rank-tag.is-active { background: var(--taptap-cyan); border-color: var(--taptap-cyan); color: #fff; }

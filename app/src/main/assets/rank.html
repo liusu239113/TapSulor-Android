@@ -21,9 +21,16 @@
   </div><div class="rank-meta"><span id="updated">尚未加载</span><button class="rank-refresh" id="refresh">刷新</button></div></div>
   <div class="rank-search"><input id="q" placeholder="搜索榜单内游戏（名称或 APP ID）"><button id="qbtn" class="rank-search-btn">搜索</button></div>
   <div class="rank-tags" id="tags"></div>
-  <div class="rank-movers" id="movers" hidden></div>
   <div class="rank-hint" id="hint"></div>
   <div class="rank-list" id="list"><div class="empty">榜单加载中…</div></div>
+  <div class="rank-scroll-btns" id="scroll-btns">
+    <button class="rank-scroll-btn" id="to-top" aria-label="回到顶部" title="回到顶部">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </button>
+    <button class="rank-scroll-btn" id="to-bottom" aria-label="回到底部" title="回到底部">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+    </button>
+  </div>
   <script src="android-bridge.js"></script>
   <script src="js/rank-page.js"></script>
 </div></body>
