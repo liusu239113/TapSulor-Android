@@ -52,6 +52,28 @@ class RankFragment : Fragment() {
         return wv
     }
 
+    override fun onResume() {
+        super.onResume()
+        pushTheme()
+    }
+
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (!hidden) pushTheme()
+    }
+
+    /** 从主页切回来时同步主题（深浅色/强调色/字体），保证与设置一致 */
+    private fun pushTheme() {
+        webView?.evaluateJavascript(
+            "(function(){try{if(window.__applyTheme){window.__applyTheme();}else{" +
+            "var d=document.documentElement;d.setAttribute('data-theme',localStorage.getItem('taptap_theme_mode')||'light');" +
+            "d.setAttribute('data-accent',localStorage.getItem('taptap_theme_accent')||'cyan');" +
+            "var f=localStorage.getItem('taptap_font_family')||'default';" +
+            "if(f&&f!=='default')d.setAttribute('data-font',f);else d.removeAttribute('data-font');}}catch(e){}})()",
+            null
+        )
+    }
+
     override fun onDestroyView() {
         webView?.let {
             (it.parent as? ViewGroup)?.removeView(it)

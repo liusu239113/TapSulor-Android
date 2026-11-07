@@ -4,6 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>热度榜</title>
+<script>
+(function(){
+  function applyTheme(){
+    try{
+      var mode=localStorage.getItem('taptap_theme_mode')||'light';
+      var accent=localStorage.getItem('taptap_theme_accent')||'cyan';
+      var font=localStorage.getItem('taptap_font_family')||'default';
+      var d=document.documentElement;
+      d.setAttribute('data-theme',mode);
+      d.setAttribute('data-accent',accent);
+      if(font&&font!=='default') d.setAttribute('data-font',font); else d.removeAttribute('data-font');
+      var m=document.querySelector('meta[name=theme-color]');
+      if(m){var map={cyan:'#25B6E9',pink:'#FF7FB3',purple:'#8B7CF6',mint:'#36C9A0'};m.setAttribute('content',mode==='dark'?'#141820':(map[accent]||'#25B6E9'));}
+    }catch(e){}
+  }
+  window.__applyTheme=applyTheme;
+  applyTheme();
+  window.addEventListener('pageshow', applyTheme);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) applyTheme(); });
+})();
+</script>
 <link rel="stylesheet" href="css/main.css">
 <link rel="stylesheet" href="css/pixelforge.css">
 
