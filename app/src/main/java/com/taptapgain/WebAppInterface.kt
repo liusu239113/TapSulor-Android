@@ -159,6 +159,93 @@ class WebAppInterface(
         }
     }
 
+
+    /** 带自定义请求头的 GET（REP 等需要 Authorization/x-app-id/x-developer-id 的接口） */
+    @JavascriptInterface fun httpGet(id: Int, url: String, headersJson: String) {
+        scope.launch {
+            val headers = runCatching {
+                gson.fromJson(headersJson, Map::class.java).entries.associate { it.key.toString() to it.value.toString() }
+            }.getOrDefault(emptyMap())
+            val result = apiClient.fetchWithHeaders(url, headers)
+            resolve(id, "__pendingHttpGet", result)
+        }
+    }
+
+    /** 带自定义请求头的 POST（提现等写接口需要 X-DC-XSRF-TOKEN） */
+    @JavascriptInterface fun httpPost(id: Int, url: String, headersJson: String) {
+        scope.launch {
+            val headers = runCatching {
+                gson.fromJson(headersJson, Map::class.java).entries.associate { it.key.toString() to it.value.toString() }
+            }.getOrDefault(emptyMap())
+            val result = apiClient.postWithHeaders(url, headers)
+            resolve(id, "__pendingHttpPost", result)
+        }
+    }
+
+    /**
+     * 读取 REP 平台令牌：后台 WebView 打开 rep.taptap.cn/<developerId>/，
+     * SSO 授权后从 localStorage 取 op-jwt-token（该令牌是所有 REP 接口的鉴权凭证）。
+     */
+    @JavascriptInterface fun repToken(id: Int, developerId: String) {
+        activity.runOnUiThread {
+            val wv = WebView(activity)
+            wv.settings.javaScriptEnabled = true
+            wv.settings.domStorageEnabled = true
+            wv.settings.userAgentString = wv.settings.userAgentString.replace("; wv", "")
+            val cm = android.webkit.CookieManager.getInstance()
+            cm.setAcceptCookie(true)
+            cm.setAcceptThirdPartyCookies(wv, true)
+            var settled = false
+            var tries = 0
+
+            fun finish(token: String) {
+                if (settled) return
+                settled = true
+                webView.post {
+                    webView.evaluateJavascript("window.__pendingRepToken($id, ${jsString(token)})", null)
+                }
+            }
+
+            fun poll() {
+                if (settled) return
+                wv.evaluateJavascript(
+                    "(function(){try{return localStorage.getItem('op-jwt-token')||''}catch(e){return ''}})()"
+                ) { v ->
+                    val token = (v ?: "").trim().trim('"')
+                    if (token.isNotEmpty()) {
+                        finish(token)
+                    } else if (tries++ < 30) {
+                        wv.postDelayed({ poll() }, 500)
+                    } else {
+                        finish("")
+                    }
+                }
+            }
+
+            wv.webViewClient = object : android.webkit.WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    wv.postDelayed({ poll() }, 800)
+                }
+            }
+            wv.loadUrl("https://rep.taptap.cn/$developerId/")
+            // 兜底超时
+            wv.postDelayed({ if (!settled) finish("") }, 20000L)
+        }
+    }
+
+
+    /** 读取开发者中心 CSRF 令牌（写接口必须带 X-DC-XSRF-TOKEN） */
+    @JavascriptInterface fun csrfToken(): String {
+        return try {
+            val raw = android.webkit.CookieManager.getInstance().getCookie("https://developer.taptap.cn/") ?: ""
+            raw.split(";").map { it.trim() }.firstOrNull { it.startsWith("DC_XSRF_TOKEN=") }
+                ?.substringAfter("=")
+                ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     private fun resolve(id: Int, functionName: String, result: TapTapApiClient.FetchResult) {
         val json = gson.toJson(
             mapOf("ok" to result.ok, "status" to result.status, "body" to result.body, "error" to result.error)

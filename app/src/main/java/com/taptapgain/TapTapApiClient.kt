@@ -76,6 +76,42 @@ class TapTapApiClient(private val accountManager: AccountManager) {
         val studios: List<Studio> = emptyList()
     )
 
+
+    /** 带自定义请求头的 GET */
+    suspend fun fetchWithHeaders(url: String, headers: Map<String, String>): FetchResult = withContext(Dispatchers.IO) {
+        try {
+            val b = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .header("Accept", "application/json, text/plain, */*")
+            headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
+            httpClient.newCall(b.build()).execute().use { r ->
+                FetchResult(r.isSuccessful, r.code, r.body?.string() ?: "", null)
+            }
+        } catch (e: Exception) {
+            FetchResult(false, 0, "", e.message)
+        }
+    }
+
+    /** 带自定义请求头的 POST（body 为空对象的 JSON） */
+    suspend fun postWithHeaders(url: String, headers: Map<String, String>): FetchResult = withContext(Dispatchers.IO) {
+        try {
+            val body = okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), "{}")
+            val b = Request.Builder()
+                .url(url)
+                .post(body)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Content-Type", "application/json")
+            headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
+            httpClient.newCall(b.build()).execute().use { r ->
+                FetchResult(r.isSuccessful, r.code, r.body?.string() ?: "", null)
+            }
+        } catch (e: Exception) {
+            FetchResult(false, 0, "", e.message)
+        }
+    }
+
     suspend fun fetch(url: String): FetchResult = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()

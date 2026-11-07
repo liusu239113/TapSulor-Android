@@ -77,3 +77,22 @@
 /* ===== 设置面板高度限制（避免超出屏幕）===== */
 .settings-panel { max-height: 88vh; display: flex; flex-direction: column; }
 .settings-body { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+
+
+
+.withdraw-modal[hidden]{display:none !important;}
+
+.rep-card { background: var(--bg-card); border: 1px solid var(--border, rgba(0,0,0,0.08)); border-radius: 14px; padding: 14px; margin: 0 auto 14px; max-width: 760px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.rep-title { font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.rep-refresh { margin-left: auto; border: 1px solid var(--border, rgba(0,0,0,0.12)); background: transparent; color: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; cursor: pointer; opacity: .8; }
+.rep-refresh:hover { opacity: 1; }
+.rep-unit { font-size: 12px; color: var(--text-secondary, #6b7280); font-weight: 400; margin-left: 6px; }
+.rep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.rep-tile { background: var(--bg-muted); border-radius: 10px; padding: 10px 12px; }
+.rep-tile.rep-main { background: rgba(124, 92, 255, 0.10); }
+.rep-label { font-size: 12px; color: var(--text-secondary, #6b7280); margin-bottom: 4px; }
+.rep-value { font-size: 20px; font-weight: 800; }
+.rep-value.rep-pos { color: #16a34a; }
+.rep-value.rep-neg { color: #dc2626; }
+.rep-note { margin-top: 10px; font-size: 12px; color: var(--text-secondary, #6b7280); }
+.rep-empty { text-align: center; color: var(--text-secondary, #6b7280); padding: 24px 0; }

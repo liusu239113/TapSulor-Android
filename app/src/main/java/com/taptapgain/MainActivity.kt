@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     // Fragment 缓存（避免每次切换都重建 WebView）
     private var communityFragment: CommunityFragment? = null
     private var makerFragment: MakerWebFragment? = null
+    private var rankFragment: RankFragment? = null
     // 防止 setOnItemSelectedListener 与 switchToTab 互相递归
     private var isSwitchingTab = false
 
@@ -196,7 +197,7 @@ class MainActivity : AppCompatActivity() {
 
         val ft = supportFragmentManager.beginTransaction()
         // 隐藏所有 Fragment
-        listOfNotNull(communityFragment, makerFragment).forEach { ft.hide(it) }
+        listOfNotNull(communityFragment, makerFragment, rankFragment).forEach { ft.hide(it) }
 
         when (tabId) {
             R.id.nav_home -> {
@@ -209,6 +210,17 @@ class MainActivity : AppCompatActivity() {
                     val f = CommunityFragment()
                     communityFragment = f
                     ft.add(R.id.tab_container, f, "community")
+                } else {
+                    ft.show(existing)
+                }
+            }
+            R.id.nav_rank -> {
+                webView.visibility = View.GONE
+                val existing = rankFragment
+                if (existing == null) {
+                    val f = RankFragment()
+                    rankFragment = f
+                    ft.add(R.id.tab_container, f, "rank")
                 } else {
                     ft.show(existing)
                 }

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>热度榜</title>
+<style>
+:root{--bg:#0f141b;--card:#171e27;--muted:#1f2833;--text:#e8edf3;--sub:#8b98a8;--cyan:#25b6e9;--up:#ef4444;--down:#10b981}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding:12px 12px 24px;background:var(--bg);color:var(--text);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.toolbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
+.toolbar::-webkit-scrollbar{display:none}
+.board{flex:0 0 auto;padding:7px 14px;border-radius:999px;border:1px solid #263140;background:var(--card);color:var(--sub);font-size:13px;font-weight:600}
+.board.is-active{background:var(--cyan);border-color:var(--cyan);color:#04121a}
+.meta{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--sub);margin:6px 0 8px}
+.refresh{border:1px solid #263140;background:transparent;color:var(--sub);border-radius:999px;padding:4px 12px;font-size:12px}
+.search{display:flex;gap:8px;margin-bottom:8px}
+.search input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid #263140;background:var(--card);color:var(--text);font-size:13px;outline:none}
+.search button{padding:0 16px;border-radius:10px;border:none;background:var(--cyan);color:#04121a;font-weight:700;font-size:13px}
+.tags{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
+.tags::-webkit-scrollbar{display:none}
+.tag{flex:0 0 auto;padding:4px 11px;border-radius:999px;border:1px solid #263140;background:var(--card);color:var(--sub);font-size:12px;font-weight:600}
+.tag.is-active{background:var(--cyan);border-color:var(--cyan);color:#04121a}
+.hint{font-size:11px;color:var(--sub);margin:4px 2px 8px}
+.row{display:flex;align-items:center;gap:10px;padding:10px 8px;border-bottom:1px solid #1d252f;background:var(--card)}
+.row:first-child{border-radius:12px 12px 0 0}
+.row:last-child{border-radius:0 0 12px 12px;border-bottom:none}
+.no{width:38px;flex:0 0 38px;font-weight:800;font-size:15px;display:flex;flex-direction:column;gap:1px}
+.up{color:var(--up);font-size:10px;font-weight:700}
+.down{color:var(--down);font-size:10px;font-weight:700}
+.icon{width:36px;height:36px;border-radius:8px;object-fit:cover;background:var(--muted)}
+.main{flex:1;min-width:0}
+.title{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:11px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.heat{text-align:right;flex:0 0 auto}
+.heat-v{font-size:14px;font-weight:700}
+.heat-d{font-size:11px}
+.heat-d.up{color:var(--up)}.heat-d.down{color:var(--down)}.heat-d.flat{color:var(--sub)}
+.empty{padding:24px 8px;text-align:center;color:var(--sub);font-size:13px}
+.sum-card{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.sum-card h3{margin:0 0 8px;font-size:14px;display:flex;gap:8px;align-items:baseline}
+.sum-card h3 span{font-size:11px;color:var(--sub);font-weight:400}
+</style>
+</head>
+<body>
+  <div class="toolbar" id="boards">
+    <button class="board is-active" data-board="hot">热门榜</button>
+    <button class="board" data-board="new">新品榜</button>
+    <button class="board" data-board="game_jam">聚光灯榜</button>
+    <button class="board" data-board="maker">TapTap制造</button>
+    <button class="board" data-board="summary">汇总</button>
+  </div>
+  <div class="meta"><span id="updated">尚未加载</span><button class="refresh" id="refresh">刷新</button></div>
+  <div class="search"><input id="q" placeholder="搜索榜单内游戏（名称或 APP ID）"><button id="qbtn">搜索</button></div>
+  <div class="tags" id="tags"></div>
+  <div class="hint" id="hint"></div>
+  <div id="list"><div class="empty">榜单加载中…</div></div>
+  <script src="android-bridge.js"></script>
+  <script src="js/rank-page.js"></script>
+</body>
+</html>

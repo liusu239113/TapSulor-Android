@@ -108,3 +108,170 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 300));
   else setTimeout(init, 300);
 })();
+
+// ==================== 一键提现（激励计划 AUTO_V1） ====================
+(function () {
+  'use strict';
+  const API = 'https://developer.taptap.cn';
+  const MIN_FEN = 10000; // 100 元
+  let items = [], armed = false, armTimer = null, running = false;
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => Number(n || 0).toFixed(2);
+
+  async function devId() {
+    try {
+      let d = await window.electronAPI.getActiveDeveloperId();
+      if (!d) d = await window.electronAPI.getDeveloperId();
+      return String(d || '');
+    } catch (_) { return ''; }
+  }
+  async function getJson(url) {
+    const r = await window.electronAPI.fetch(url);
+    if (!r || !r.ok) throw new Error('HTTP ' + (r && r.status));
+    return JSON.parse(r.body);
+  }
+
+  async function preview() {
+    const d = await devId();
+    if (!d) throw new Error('未登录');
+    const list = await getJson(API + '/api/app/v1/list?developer_id=' + d + '&page=1&pagesize=100');
+    const apps = ((list.data && list.data.list) || []).filter(a => a.review_status && a.review_status.value === 4);
+    const out = [];
+    for (const a of apps) {
+      try {
+        const j = await getJson(API + '/api/mini-app/v1/ad/withdraw-info?app_id=' + a.id + '&developer_id=' + d + '&settlement_scheme=AUTO_V1');
+        const dd = j.data || {};
+        const fen = Number(dd.withdrawable_cash_fen || 0);
+        if (fen > 0) {
+          out.push({
+            appId: a.id, title: a.title, fen: fen,
+            status: Number(dd.status), blocked: !!dd.withdrawal_blocked,
+            eligible: fen >= MIN_FEN && Number(dd.status) === 1 && !dd.withdrawal_blocked
+          });
+        }
+      } catch (_) {}
+    }
+    out.sort((x, y) => y.fen - x.fen);
+    return { dev: d, items: out };
+  }
+
+  function renderPreview(res) {
+    const list = $('withdraw-list');
+    const summary = $('withdraw-summary');
+    const btn = $('withdraw-confirm');
+    items = res.items || [];
+    const eligible = items.filter(i => i.eligible);
+    const total = eligible.reduce((s, i) => s + i.fen, 0) / 100;
+    if (!items.length) {
+      summary.textContent = '当前厂商下没有可提现的激励计划现金（最低 100 元/笔）';
+      list.innerHTML = '';
+      btn.disabled = true;
+      btn.textContent = '暂无可提现游戏';
+      return;
+    }
+    summary.innerHTML = '可提现 <b>' + eligible.length + '</b> 个 · 合计 <b>¥' + fmt(total) + '</b>' +
+      '<div style="margin-top:4px;font-size:12px;color:#8b98a8">激励计划 · 最低 100 元/笔</div>';
+    list.innerHTML = items.map(i =>
+      '<div class="withdraw-row' + (i.eligible ? '' : ' is-disabled') + '">' +
+        '<span class="withdraw-row-title">' + String(i.title || i.appId).replace(/[<>&]/g, '') + '</span>' +
+        '<span class="withdraw-row-balance">¥' + fmt(i.fen / 100) + '</span>' +
+        '<span class="withdraw-row-state">' + (i.eligible ? '可提现' : '未满 100 元') + '</span>' +
+      '</div>').join('');
+    btn.disabled = eligible.length === 0;
+    btn.textContent = eligible.length ? ('确认提现 ' + eligible.length + ' 个') : '暂无可提现游戏';
+  }
+
+  async function openModal() {
+    const m = $('withdraw-modal');
+    if (!m) return;
+    m.hidden = false;
+    $('withdraw-summary').textContent = '正在查询各游戏余额…';
+    $('withdraw-list').innerHTML = '';
+    $('withdraw-confirm').disabled = true;
+    armed = false;
+    try {
+      renderPreview(await preview());
+    } catch (e) {
+      $('withdraw-summary').textContent = '查询失败：' + (e.message || e);
+    }
+  }
+
+  async function execute() {
+    const eligible = items.filter(i => i.eligible);
+    if (!eligible.length || running) return;
+    const total = eligible.reduce((s, i) => s + i.fen, 0) / 100;
+    const btn = $('withdraw-confirm');
+    const note = $('withdraw-note');
+    if (!armed) {
+      armed = true;
+      btn.textContent = '再次点击确认 ¥' + fmt(total);
+      note.textContent = '提交后不可撤销。10 秒内再次点击即发起提现。';
+      clearTimeout(armTimer);
+      armTimer = setTimeout(() => { armed = false; btn.textContent = '确认提现 ' + eligible.length + ' 个'; note.textContent = '最低提现 100 元/笔；未满 100 元的游戏会自动跳过。'; }, 10000);
+      return;
+    }
+    clearTimeout(armTimer); armed = false; running = true;
+    btn.disabled = true; btn.textContent = '提现中…';
+    note.textContent = '正在逐个提交，请勿退出…';
+    const csrf = (window.electronAPI.csrfToken && window.electronAPI.csrfToken()) || '';
+    const d = await devId();
+    const results = [];
+    for (const it of eligible) {
+      try {
+        // 签约检查
+        const ck = await window.electronAPI.httpPost(API + '/api/mini-app/v1/ad/withdraw-contract/check?developer_id=' + d + '&app_id=' + it.appId, { 'X-DC-XSRF-TOKEN': csrf });
+        let state = null;
+        try { state = JSON.parse(ck.body).data.state; } catch (_) {}
+        if (state && state !== 'SIGNED' && state !== 'NOT_REQUIRED') {
+          results.push({ appId: it.appId, ok: false, msg: '未签约（' + state + '）', amount: it.fen / 100 });
+          continue;
+        }
+        const url = API + '/api/mini-app/v1/ad/payout-report-confirm?app_id=' + it.appId +
+          '&amount=' + it.fen + '&developer_id=' + d +
+          '&idempotency_key=' + encodeURIComponent('ts' + Date.now() + Math.random().toString(36).slice(2, 8)) +
+          '&settlement_scheme=AUTO_V1';
+        const r = await window.electronAPI.httpPost(url, { 'X-DC-XSRF-TOKEN': csrf });
+        let ok = false, msg = 'HTTP ' + (r && r.status);
+        try { const j = JSON.parse(r.body); ok = !!j.success; if (!ok && j.data) msg = j.data.msg || msg; } catch (_) {}
+        results.push({ appId: it.appId, ok: ok, msg: ok ? '已提交' : msg, amount: it.fen / 100 });
+      } catch (e) {
+        results.push({ appId: it.appId, ok: false, msg: e.message || '失败', amount: it.fen / 100 });
+      }
+      await new Promise(r => setTimeout(r, 600));
+    }
+    running = false;
+    const okCount = results.filter(r => r.ok).length;
+    $('withdraw-summary').innerHTML = '成功 <b>' + okCount + '</b> / ' + results.length + ' 笔';
+    $('withdraw-list').innerHTML = results.map(r => {
+      const it = items.find(i => String(i.appId) === String(r.appId)) || {};
+      return '<div class="withdraw-row"><span class="withdraw-row-title">' + String(it.title || r.appId) + '</span>' +
+        '<span class="withdraw-row-balance">¥' + fmt(r.amount) + '</span>' +
+        '<span class="withdraw-row-state" style="color:' + (r.ok ? '#10b981' : '#ef4444') + '">' + r.msg + '</span></div>';
+    }).join('');
+    note.textContent = '提现结果以 TapTap 后台「激励计划」为准。';
+    btn.disabled = false; btn.textContent = '完成';
+  }
+
+  function closeModal() {
+    const m = $('withdraw-modal');
+    if (m) m.hidden = true;
+    armed = false;
+  }
+
+  function hook() {
+    const b = $('withdraw-all-btn');
+    if (b) { b.hidden = false; b.addEventListener('click', openModal); }
+    const c = $('withdraw-close'), ca = $('withdraw-cancel'), ov = $('withdraw-overlay');
+    if (c) c.addEventListener('click', closeModal);
+    if (ca) ca.addEventListener('click', closeModal);
+    if (ov) ov.addEventListener('click', closeModal);
+    const cf = $('withdraw-confirm');
+    if (cf) cf.addEventListener('click', execute);
+    const rf = $('withdraw-refresh'), st = $('withdraw-status');
+    if (rf) rf.addEventListener('click', openModal);
+    if (st) st.addEventListener('click', openModal);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(hook, 600));
+  else setTimeout(hook, 600);
+})();
