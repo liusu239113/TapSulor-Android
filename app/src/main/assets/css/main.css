@@ -101,3 +101,91 @@
 .view-switch .vs-thumb { width: calc(33.333% - 2px) !important; }
 .view-switch.is-rep .vs-thumb { transform: translateX(200%) !important; }
 .view-switch .vs-btn { min-width: 0 !important; padding-left: 6px !important; padding-right: 6px !important; flex: 1 1 0; }
+
+/* ==================== 热度榜 ==================== */
+.rank-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.rank-boards { display: flex; gap: 6px; background: var(--bg-card); padding: 4px; border-radius: 10px; box-shadow: var(--shadow-card); }
+.rank-board { padding: 7px 16px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary); font-family: inherit; transition: all .2s; }
+.rank-board.is-active { background: var(--taptap-cyan); color: #fff; }
+.rank-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-tertiary); }
+.rank-refresh { border: 1px solid var(--border-light); background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; font-family: inherit; }
+.rank-refresh:hover { color: var(--taptap-cyan); border-color: var(--taptap-cyan); }
+
+.rank-search { display: flex; gap: 8px; margin-bottom: 10px; }
+.rank-search input { flex: 1; padding: 10px 14px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-card); color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none; }
+.rank-search input:focus { border-color: var(--taptap-cyan); }
+.rank-search-btn { padding: 0 18px; border: none; border-radius: 10px; background: var(--taptap-cyan); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.rank-search-result { background: var(--bg-card); border-radius: 12px; padding: 8px; margin-bottom: 12px; box-shadow: var(--shadow-card); }
+
+.rank-hint { font-size: 12px; color: var(--text-tertiary); padding: 6px 4px 10px; }
+.rank-list { background: var(--bg-card); border-radius: 14px; padding: 6px 8px; box-shadow: var(--shadow-card); }
+.rank-row { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--border-light); cursor: pointer; border-radius: 8px; transition: background .15s; }
+.rank-row:last-child { border-bottom: none; }
+.rank-row:hover { background: var(--bg-muted); }
+.rank-no { width: 46px; flex: 0 0 46px; font-size: 15px; font-weight: 800; color: var(--text-primary); display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.rank-no .rank-up { font-size: 10px; color: #ef4444; font-weight: 700; }
+.rank-no .rank-down { font-size: 10px; color: #10b981; font-weight: 700; }
+.rank-icon { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex: 0 0 36px; background: var(--bg-muted); }
+.rank-main { flex: 1; min-width: 0; }
+.rank-title { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-label { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 500; padding: 1px 5px; border-radius: 4px; background: var(--bg-muted); color: var(--text-tertiary); vertical-align: middle; }
+.rank-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-heat { text-align: right; flex: 0 0 auto; }
+.rank-heat-val { font-size: 14px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.rank-heat-delta { font-size: 11px; font-variant-numeric: tabular-nums; }
+.rank-heat-delta.up { color: #ef4444; }
+.rank-heat-delta.down { color: #10b981; }
+.rank-heat-delta.flat { color: var(--text-tertiary); }
+.rank-spark-wrap { flex: 0 0 56px; display: flex; justify-content: flex-end; }
+.rank-spark { display: block; }
+.rank-spark-empty { color: var(--text-tertiary); font-size: 11px; }
+
+.rank-summary { display: block; }
+.rank-sum-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.rank-sum-card { background: var(--bg-card); border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow-card); }
+.rank-sum-card h3 { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: baseline; gap: 8px; }
+.rank-sum-card h3 span { font-size: 11px; font-weight: 400; color: var(--text-tertiary); }
+.rank-sum-row { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.rank-sum-row:last-child { border-bottom: none; }
+.rank-sum-row:hover { background: var(--bg-muted); }
+.rank-sum-idx { width: 40px; flex: 0 0 40px; font-size: 12px; font-weight: 700; color: var(--text-tertiary); }
+.rank-sum-title { flex: 1; min-width: 0; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-sum-board { flex: 0 0 auto; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--bg-muted); color: var(--text-tertiary); }
+.rank-sum-heat { flex: 0 0 72px; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rank-sum-delta { flex: 0 0 84px; text-align: right; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rank-sum-delta.up { color: #ef4444; }
+.rank-sum-delta.down { color: #10b981; }
+.rank-sum-delta.flat { color: var(--text-tertiary); }
+.rank-empty { font-size: 12px; color: var(--text-tertiary); padding: 10px 4px; }
+
+.rank-detail { background: var(--bg-card); border-radius: 14px; padding: 14px; margin-top: 12px; box-shadow: var(--shadow-card); position: relative; }
+.rank-detail-head { display: flex; align-items: center; gap: 10px; }
+.rank-detail-icon { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; background: var(--bg-muted); }
+.rank-detail-info { flex: 1; min-width: 0; }
+.rank-detail-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.rank-detail-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.rank-detail-close { position: absolute; top: 8px; right: 10px; border: none; background: transparent; font-size: 20px; line-height: 1; color: var(--text-tertiary); cursor: pointer; }
+.rank-detail-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+.rank-stat { background: var(--bg-muted); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; }
+.rank-stat-label { font-size: 11px; color: var(--text-tertiary); }
+.rank-stat-value { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.rank-chart-svg { width: 100%; height: 120px; display: block; }
+.rank-chart-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+.rank-detail-note { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+
+/* ==================== 信用等级徽标 ==================== */
+.op-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.op-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg-muted); color: var(--text-tertiary); }
+.op-badge.ok { background: rgba(16, 185, 129, .12); color: #10b981; }
+.op-badge.warn { background: rgba(239, 68, 68, .12); color: #ef4444; }
+.op-badge.credit { background: rgba(37, 182, 233, .12); color: var(--taptap-cyan); }
+.op-badge.muted { color: var(--text-tertiary); }
+
+/* ==================== 收益刮刮乐 ==================== */
+.stat-tile { position: relative; overflow: hidden; }
+.stat-tile-value { position: relative; }
+.scratch-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; cursor: crosshair; touch-action: none; transition: opacity .25s ease; z-index: 5; }
+.scratch-canvas.is-done { opacity: 0; }
+.settings-row-hint { display: block; font-size: 11px; color: var(--text-tertiary); font-weight: 400; margin-top: 2px; }
+
+

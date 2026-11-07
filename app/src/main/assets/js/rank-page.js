@@ -15,6 +15,14 @@
   const STORE = 'rank_history_v1';
   const PAGE = 10;
   const XUA = 'V=1&PN=WebApp&LANG=zh_CN&VN_CODE=100000000&LOC=CN&PLT=PC&DS=Android&UID=' + 'zpad' + '&OS=Android&OSV=14&DT=Phone';
+  function uuid() {
+    let u = localStorage.getItem('rank_uuid');
+    if (!u || u.length < 30) {
+      u = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; const v = c === 'x' ? r : (r & 3 | 8); return v.toString(16); });
+      localStorage.setItem('rank_uuid', u);
+    }
+    return u;
+  }
 
   const state = { board: 'hot', tag: '', data: {}, hist: {}, loadedAt: null };
   const $ = (id) => document.getElementById(id);
@@ -24,7 +32,7 @@
     if (!u) { u = 'u' + Math.random().toString(36).slice(2, 10); localStorage.setItem('rank_uid', u); }
     return u;
   }
-  const xua = () => XUA.replace('zpad', uid());
+  const xua = () => XUA.replace('zpad', uuid());
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtHeat = (n) => { const v = Number(n) || 0; if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿'; if (v >= 1e4) return (v / 1e4).toFixed(v >= 1e5 ? 0 : 1) + '万'; return String(v); };
   const fmtDelta = (n) => {
@@ -105,7 +113,7 @@
     const head = priority.filter(t => tags.includes(t));
     const rest = tags.filter(t => !head.includes(t)).slice(0, 10);
     $('tags').innerHTML = [''].concat(head, rest).map(t =>
-      '<button class="tag' + (state.tag === t ? ' is-active' : '') + '" data-tag="' + esc(t) + '">' + (t || '全部') + '</button>'
+      '<button class="rank-tag' + (state.tag === t ? ' is-active' : '') + '" data-tag="' + esc(t) + '">' + (t || '全部') + '</button>'
     ).join('');
   }
   const matchTag = (it) => !state.tag || (it.tags || []).includes(state.tag);
@@ -114,9 +122,9 @@
     const d = deltaFor(key, it);
     const hd = fmtDelta(d.heat);
     const rd = d.rank == null ? '' : (d.rank > 0 ? '<span class="up">↑' + d.rank + '</span>' : (d.rank < 0 ? '<span class="down">↓' + Math.abs(d.rank) + '</span>' : ''));
-    return '<div class="row">' +
-      '<div class="no">' + (idx != null ? idx : it.rank) + rd + '</div>' +
-      '<img class="icon" src="' + (it.icon || 'app-icon.png') + '" loading="lazy">' +
+    return '<div class="rank-row">' +
+      '<div class="rank-no">' + (idx != null ? idx : it.rank) + rd + '</div>' +
+      '<img class="rank-icon" src="' + (it.icon || 'app-icon.png') + '" loading="lazy">' +
       '<div class="main"><div class="title">' + esc(it.title) + '</div>' +
       '<div class="sub">评分 ' + (it.score || '—') + ' · 评价 ' + fmtHeat(it.reviews || 0) + ' · 粉丝 ' + fmtHeat(it.fans || 0) + '</div></div>' +
       '<div class="heat"><div class="heat-v">' + fmtHeat(it.hits) + '</div><div class="heat-d ' + hd.cls + '">' + hd.text + '</div></div>' +
@@ -143,7 +151,7 @@
       const card = (title, rows, showDelta) => rows.length ? '<div class="sum-card"><h3>' + title + '</h3>' + rows.slice(0, 15).map((r, i) => {
         const d = fmtDelta(deltaFor('hot', r).heat);
         return '<div class="row" style="margin:0 -12px;padding:8px 12px"><div class="no">' + (i + 1) + '</div>' +
-          '<img class="icon" src="' + (r.icon || 'app-icon.png') + '" loading="lazy">' +
+          '<img class="rank-icon" src="' + (r.icon || 'app-icon.png') + '" loading="lazy">' +
           '<div class="main"><div class="title">' + esc(r.title) + '</div><div class="sub">' + r.boardLabel + ' · 热度 ' + fmtHeat(r.hits) + '</div></div>' +
           '<div class="heat"><div class="heat-v ' + d.cls + '">' + (showDelta ? d.text : '') + '</div></div></div>';
       }).join('') + '</div>' : '';
@@ -197,7 +205,7 @@
     $('hint').textContent = '找到 ' + hits.length + ' 个';
     $('list').innerHTML = hits.slice(0, 30).map(h =>
       '<div class="row"><div class="no">#' + h.rank + '</div>' +
-      '<img class="icon" src="' + (h.icon || 'app-icon.png') + '" loading="lazy">' +
+      '<img class="rank-icon" src="' + (h.icon || 'app-icon.png') + '" loading="lazy">' +
       '<div class="main"><div class="title">' + esc(h.title) + '</div><div class="sub">' + h.boardLabel + ' · 评分 ' + (h.score || '—') + '</div></div>' +
       '<div class="heat"><div class="heat-v">' + fmtHeat(h.hits) + '</div></div></div>'
     ).join('');
@@ -205,9 +213,9 @@
 
   function bind() {
     $('boards').addEventListener('click', (e) => {
-      const btn = e.target.closest('.board'); if (!btn) return;
+      const btn = e.target.closest('.rank-board'); if (!btn) return;
       state.board = btn.dataset.board;
-      $('boards').querySelectorAll('.board').forEach(b => b.classList.toggle('is-active', b === btn));
+      $('boards').querySelectorAll('.rank-board').forEach(b => b.classList.toggle('is-active', b === btn));
       render();
     });
     $('tags').addEventListener('click', (e) => {

@@ -134,20 +134,18 @@
       const d = await devId();
       const appId = currentAppId();
       if (!d || !appId) throw new Error('缺少厂商或游戏 ID');
-      const token = await window.electronAPI.repToken(d);
-      if (!token) throw new Error('REP 登录态获取失败，请在 REP 后台确认一次授权');
-      const res = await window.electronAPI.httpGet(REP_URL, {
-        Authorization: token,
-        'x-app-id': String(appId),
-        'x-developer-id': String(d),
-        Referer: 'https://rep.taptap.cn/'
-      });
-      if (!res || !res.ok) {
-        let msg = 'REP 接口请求失败' + (res && res.status ? ' (' + res.status + ')' : '');
-        if (res && res.body && res.body.indexOf('非法厂商Id') >= 0) msg = '当前账号没有这个游戏的 REP 数据';
+      const raw = await window.electronAPI.repRevenue(appId, d);
+      let payload = null;
+      try { payload = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) {}
+      if (!payload) throw new Error('REP 返回异常');
+      if (payload.error === 'NO_TOKEN') throw new Error('REP 登录态获取失败：请在浏览器打开 rep.taptap.cn 完成一次授权');
+      if (payload.error === 'TIMEOUT') throw new Error('REP 授权超时，请重试');
+      if (!payload.ok) {
+        let msg = 'REP 接口请求失败' + (payload.status ? ' (' + payload.status + ')' : '');
+        if (payload.body && payload.body.indexOf('非法厂商Id') >= 0) msg = '当前账号没有这个游戏的 REP 数据';
         throw new Error(msg);
       }
-      repData = JSON.parse(res.body);
+      repData = JSON.parse(payload.body);
       render(repData);
     } catch (e) {
       repError = 'REP 收益获取失败：' + (e && e.message ? e.message : e);

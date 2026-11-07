@@ -246,6 +246,62 @@ class WebAppInterface(
         }
     }
 
+
+    /**
+     * 直接取 REP 收益：后台 WebView 打开 rep.taptap.cn/<developerId>/，
+     * 在页面内（同源）用 localStorage 的令牌请求接口，避免 Cookie/头跨域问题。
+     */
+    @JavascriptInterface fun repRevenue(id: Int, appId: String, developerId: String) {
+        activity.runOnUiThread {
+            val wv = WebView(activity)
+            wv.settings.javaScriptEnabled = true
+            wv.settings.domStorageEnabled = true
+            wv.settings.userAgentString = wv.settings.userAgentString.replace("; wv", "")
+            val cm = android.webkit.CookieManager.getInstance()
+            cm.setAcceptCookie(true); cm.setAcceptThirdPartyCookies(wv, true)
+            var settled = false
+            fun done(payload: String) {
+                if (settled) return
+                settled = true
+                webView.post { webView.evaluateJavascript("window.__pendingRepRevenue($id, ${jsString(payload)})", null) }
+            }
+            fun run() {
+                val js = "(async function(){try{" +
+                    "var tk=localStorage.getItem('op-jwt-token')||'';" +
+                    "if(!tk) return JSON.stringify({ok:false,error:'NO_TOKEN'});" +
+                    "var r=await fetch('https://tap-op.tapapis.cn/rep/be/v1/dashboard/revenue',{headers:{Authorization:tk,'x-app-id':'" + appId + "','x-developer-id':'" + developerId + "'}});" +
+                    "var t=await r.text();return JSON.stringify({ok:r.ok,status:r.status,body:t});" +
+                    "}catch(e){return JSON.stringify({ok:false,error:String(e)})}})()"
+                wv.evaluateJavascript(js) { v ->
+                    // evaluateJavascript 返回的是被 JSON 编码过的字符串
+                    val raw = (v ?: "").trim()
+                    val unescaped = if (raw.startsWith(""") && raw.endsWith(""")) {
+                        try { com.google.gson.JsonParser().parse(raw).asString } catch (_: Exception) { raw }
+                    } else raw
+                    done(unescaped)
+                }
+            }
+            wv.webViewClient = object : android.webkit.WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    // 等 SSO 授权把令牌写进 localStorage
+                    var tries = 0
+                    fun waitToken() {
+                        if (settled) return
+                        wv.evaluateJavascript("(function(){try{return localStorage.getItem('op-jwt-token')||''}catch(e){return ''}})()") { t ->
+                            val token = (t ?: "").trim().trim('"')
+                            if (token.isNotEmpty()) run()
+                            else if (tries++ < 24) wv.postDelayed({ waitToken() }, 500)
+                            else done("{\"ok\":false,\"error\":\"NO_TOKEN\"}")
+                        }
+                    }
+                    wv.postDelayed({ waitToken() }, 600)
+                }
+            }
+            wv.loadUrl("https://rep.taptap.cn/$developerId/")
+            wv.postDelayed({ if (!settled) done("{\"ok\":false,\"error\":\"TIMEOUT\"}") }, 20000L)
+        }
+    }
+
     private fun resolve(id: Int, functionName: String, result: TapTapApiClient.FetchResult) {
         val json = gson.toJson(
             mapOf("ok" to result.ok, "status" to result.status, "body" to result.body, "error" to result.error)
