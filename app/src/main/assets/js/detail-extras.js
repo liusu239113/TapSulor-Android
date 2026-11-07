@@ -62,6 +62,9 @@
 
   function setActive(sw, view) {
     sw.querySelectorAll('.vs-btn').forEach(b => b.classList.toggle('is-active', b.getAttribute('data-view') === view));
+    // 三段式：同步容器状态，让高亮滑块按 1/3 宽度定位
+    sw.classList.toggle('is-trend', view === 'trend');
+    sw.classList.toggle('is-rep', view === 'rep');
   }
 
   function showRep() {
