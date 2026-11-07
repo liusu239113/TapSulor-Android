@@ -41,9 +41,10 @@ class RankFragment : Fragment() {
         wv.setBackgroundColor(0xFF0F141B.toInt())
         wv.webViewClient = WebViewClient()
 
-        val accountManager = AccountManager(ctx)
+        val act = requireActivity()
+        val accountManager = AccountManager(act)
         val apiClient = TapTapApiClient(accountManager)
-        val updateChecker = UpdateChecker(ctx)
+        val updateChecker = UpdateChecker(act)
         WebAppInterface(requireActivity(), wv, accountManager, apiClient, updateChecker).register()
 
         wv.loadUrl("file:///android_asset/rank.html")
