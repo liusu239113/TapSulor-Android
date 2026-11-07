@@ -189,3 +189,22 @@
 .settings-row-hint { display: block; font-size: 11px; color: var(--text-tertiary); font-weight: 400; margin-top: 2px; }
 
 
+
+/* ===== 热度榜手机端紧凑布局（覆盖桌面窄屏不适配的问题）===== */
+.rank-page .app { padding: 10px 10px 18px !important; max-width: none !important; }
+.rank-page .rank-toolbar { gap: 8px; margin-bottom: 8px; }
+.rank-page .rank-boards { padding: 3px; gap: 4px; overflow-x: auto; }
+.rank-page .rank-board { padding: 6px 12px; font-size: 12px; white-space: nowrap; }
+.rank-page .rank-meta { font-size: 11px; }
+.rank-page .rank-search input { padding: 9px 12px; font-size: 12px; }
+.rank-page .rank-search-btn { padding: 0 14px; font-size: 12px; }
+.rank-page .rank-list { padding: 4px 6px; }
+.rank-page .rank-row { gap: 8px; padding: 9px 4px; }
+.rank-page .rank-no { width: 34px; flex: 0 0 34px; font-size: 14px; }
+.rank-page .rank-icon { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 7px; }
+.rank-page .rank-title { font-size: 13px; }
+.rank-page .rank-sub { font-size: 10px; }
+.rank-page .rank-heat-val { font-size: 13px; }
+.rank-page .rank-heat-delta { font-size: 10px; }
+.rank-page .rank-spark-wrap { display: none; }
+.rank-page .rank-hint { font-size: 10px; padding: 2px 2px 8px; }

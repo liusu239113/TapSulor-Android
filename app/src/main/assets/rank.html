@@ -22,6 +22,7 @@
   window.__applyTheme=applyTheme;
   applyTheme();
   window.addEventListener('pageshow', applyTheme);
+  window.addEventListener('load',function(){var d=document.getElementById('theme-debug');if(d){d.textContent='主题: '+(localStorage.getItem('taptap_theme_mode')||'light')+' / '+(localStorage.getItem('taptap_theme_accent')||'cyan')+' / '+(localStorage.getItem('taptap_font_family')||'default');}});
   document.addEventListener('visibilitychange', function(){ if(!document.hidden) applyTheme(); });
 })();
 </script>
@@ -40,7 +41,7 @@
   </div><div class="rank-meta"><span id="updated">尚未加载</span><button class="rank-refresh" id="refresh">刷新</button></div></div>
   <div class="rank-search"><input id="q" placeholder="搜索榜单内游戏（名称或 APP ID）"><button id="qbtn">搜索</button></div>
   <div class="rank-tags" id="tags"></div>
-  <div class="rank-hint" id="hint"></div>
+  <div class="rank-hint" id="hint"></div><div class="rank-hint" id="theme-debug" style="opacity:.6"></div>
   <div class="rank-list" id="list"><div class="empty">榜单加载中…</div></div>
   <script src="android-bridge.js"></script>
   <script src="js/rank-page.js"></script>

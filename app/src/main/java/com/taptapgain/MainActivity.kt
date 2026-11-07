@@ -195,9 +195,18 @@ class MainActivity : AppCompatActivity() {
     private fun switchToTabInternal(tabId: Int) {
         if (tabId == currentTabId) return
 
+        // 先按目标 tab 决定主页 WebView 的可见性，避免后续异常导致主页一直隐藏（表现为点了没反应）
+        if (tabId == R.id.nav_home) {
+            webView.visibility = View.VISIBLE
+        } else {
+            webView.visibility = View.GONE
+        }
+
         val ft = supportFragmentManager.beginTransaction()
-        // 隐藏所有 Fragment
-        listOfNotNull(communityFragment, makerFragment, rankFragment).forEach { ft.hide(it) }
+        // 隐藏所有已 attach 的 Fragment（未 attach 的调用 hide 会抛异常，必须过滤）
+        listOfNotNull(communityFragment, makerFragment, rankFragment).forEach {
+            if (it.isAdded) ft.hide(it)
+        }
 
         when (tabId) {
             R.id.nav_home -> {
