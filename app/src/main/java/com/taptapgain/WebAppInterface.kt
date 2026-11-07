@@ -195,6 +195,15 @@ class WebAppInterface(
             val cm = android.webkit.CookieManager.getInstance()
             cm.setAcceptCookie(true)
             cm.setAcceptThirdPartyCookies(wv, true)
+            // 同步当前账号登录 Cookie，否则后台页面拿不到 REP 令牌
+            try {
+                val accId = accountManager.getCurrentAccountId()
+                listOf("https://developer.taptap.cn/", "https://accounts.taptap.cn/", "https://rep.taptap.cn/").forEach { u ->
+                    val url = okhttp3.HttpUrl.get(u) ?: return@forEach
+                    accountManager.getCookiesForUrl(accId, url).forEach { c -> cm.setCookie(u, c.name + "=" + c.value) }
+                }
+                cm.flush()
+            } catch (e: Exception) { }
             var settled = false
             var tries = 0
 

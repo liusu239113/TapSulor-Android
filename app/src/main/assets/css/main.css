@@ -192,26 +192,46 @@
 
 
 
-/* ===== 热度榜：沿用首页 .game-card 的视觉语言（同一套 token，不另起风格） ===== */
-.rank-page .app { padding: 12px 16px 24px; max-width: none; }
-.rank-page .rank-list { display: flex; flex-direction: column; gap: 12px; background: transparent; box-shadow: none; padding: 0; }
-.rank-page .rank-row {
-  background: var(--bg-card);
-  border: 2px solid transparent;
-  border-radius: 14px;
-  box-shadow: var(--shadow-card);
-  padding: 14px 16px;
-  gap: 14px;
-  transition: transform .2s, box-shadow .2s, border-color .2s;
-}
-.rank-page .rank-row:active { transform: translateY(0); }
-.rank-page .rank-no { width: 40px; flex: 0 0 40px; font-size: 16px; font-weight: 700; color: var(--taptap-cyan-dark); }
-.rank-page .rank-icon { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 10px; background: var(--taptap-cyan-light); }
-.rank-page .rank-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.rank-page .rank-sub { font-size: 12px; color: var(--text-tertiary); }
-.rank-page .rank-heat-val { font-size: 15px; font-weight: 700; }
-.rank-page .rank-heat-delta { font-size: 11px; }
-.rank-page .rank-board, .rank-page .rank-tag, .rank-page .rank-refresh, .rank-page .rank-search-btn { font-family: inherit; }
-.rank-page .rank-boards { background: var(--bg-card); box-shadow: var(--shadow-card); }
-.rank-page .rank-search input { background: var(--bg-card); box-shadow: var(--shadow-card); border-radius: 12px; height: 38px; font-size: 14px; }
-.rank-page .rank-hint { color: var(--text-tertiary); font-size: 12px; padding: 4px 2px 10px; }
+
+/* ===== 热度榜：沿用 App 统一卡片风格（与首页/详情页一致）===== */
+.rank-page { background: var(--bg-page); }
+.rank-page .app { padding: 14px 16px 28px; max-width: none; }
+/* 五个榜单切换：不折行，窄屏可横向滑动 */
+.rank-page .rank-boards { overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.rank-page .rank-boards::-webkit-scrollbar { display: none; height: 0; }
+.rank-page .rank-board { flex: 0 0 auto; white-space: nowrap; padding: 7px 10px; }
+
+/* 趋势数值明细表 */
+.trend-detail-card { background: var(--bg-card); border-radius: 14px; padding: 12px 10px; margin: 10px 0 16px; box-shadow: var(--shadow-card); }
+.tdc-title { font-size: 13px; font-weight: 700; color: var(--text-primary); padding: 2px 6px 8px; }
+.tdc-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1.1fr 0.9fr; gap: 4px; padding: 7px 6px; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border-light); }
+.tdc-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tdc-row span:nth-child(n+2) { text-align: right; }
+.tdc-head { color: var(--text-tertiary); font-weight: 600; border-bottom: 1px solid var(--text-primary); }
+.tdc-row .up { color: #ef4444; }
+.tdc-row .down { color: #10b981; }
+
+/* 榜单详情浮层 + 涨跌配色（股票感） */
+.rank-page .up, .rank-page .rank-no .up, .rank-page .rank-heat-delta.up { color: #ef4444 !important; }
+.rank-page .down, .rank-page .rank-no .down, .rank-page .rank-heat-delta.down { color: #10b981 !important; }
+.rank-detail-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60; }
+.rank-detail-panel { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 61; background: var(--bg-card); border-radius: 16px; padding: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+.rd-head { display: flex; align-items: center; gap: 10px; }
+.rd-icon { width: 44px; height: 44px; border-radius: 10px; }
+.rd-info { flex: 1; min-width: 0; }
+.rd-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.rd-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.rd-close { border: none; background: transparent; font-size: 22px; line-height: 1; color: var(--text-tertiary); }
+.rd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.rd-cell { background: var(--bg-muted); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+.rd-cell span { font-size: 10px; color: var(--text-tertiary); }
+.rd-cell b { font-size: 14px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.rd-cell b.up { color: #ef4444; }
+.rd-cell b.down { color: #10b981; }
+.rd-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+/* ===== 详情页：日历/趋势/REP 三段切换（等宽、文字不竖排、图标对齐）===== */
+.view-switch { width: 100% !important; max-width: 340px !important; box-sizing: border-box; }
+.view-switch .vs-btn { flex: 1 1 0 !important; min-width: 0 !important; padding-left: 4px !important; padding-right: 4px !important; gap: 4px !important; }
+.view-switch .vs-btn > span { white-space: nowrap !important; word-break: keep-all !important; }
+.view-switch .vs-btn > svg { width: 14px; height: 14px; flex: 0 0 auto; }

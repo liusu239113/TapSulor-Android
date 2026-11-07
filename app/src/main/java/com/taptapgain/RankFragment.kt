@@ -11,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
+import okhttp3.Request
 import androidx.webkit.WebViewClientCompat
 import android.widget.FrameLayout
 import androidx.fragment.app.Fragment
@@ -23,9 +24,20 @@ class RankFragment : Fragment() {
 
     private var webView: WebView? = null
 
+    private fun isImageUrl(url: String): Boolean {
+        val u = url.lowercase()
+        return u.contains("tapimg") || u.contains("tapimg.com") || u.endsWith(".png") || u.endsWith(".jpg") ||
+            u.endsWith(".jpeg") || u.endsWith(".webp") || u.endsWith(".gif") || u.contains("_tap_appicon")
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val ctx = requireContext()
+        val act = requireActivity()
+        val accountManager = AccountManager(act)
+        val apiClient = TapTapApiClient(accountManager)
+        val updateChecker = UpdateChecker(act)
+
         val wv = WebView(ctx)
         wv.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -48,14 +60,29 @@ class RankFragment : Fragment() {
             .build()
         wv.webViewClient = object : WebViewClientCompat() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                return assetLoader.shouldInterceptRequest(request.url)
+                val asset = assetLoader.shouldInterceptRequest(request.url)
+                if (asset != null) return asset
+                val url = request.url.toString()
+                // 与主页一致：图片走 OkHttp 代拉（带 Referer），否则 CDN 会返回碎图/被拦
+                if (isImageUrl(url) && url.startsWith("http")) {
+                    try {
+                        val req = Request.Builder()
+                            .url(url)
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                            .header("Referer", "https://www.taptap.cn/")
+                            .build()
+                        val resp = apiClient.httpClient.newCall(req).execute()
+                        val body = resp.body
+                        if (resp.isSuccessful && body != null) {
+                            val mime = resp.header("Content-Type")?.substringBefore(";") ?: "image/png"
+                            return WebResourceResponse(mime, "utf-8", body.byteStream())
+                        }
+                    } catch (e: Exception) { }
+                }
+                return null
             }
         }
 
-        val act = requireActivity()
-        val accountManager = AccountManager(act)
-        val apiClient = TapTapApiClient(accountManager)
-        val updateChecker = UpdateChecker(act)
         WebAppInterface(requireActivity(), wv, accountManager, apiClient, updateChecker).register()
 
         wv.loadUrl("https://appassets.androidplatform.net/assets/rank.html")

@@ -14,7 +14,7 @@
   const MAKER_TAG = 'TapTap制造';
   const STORE = 'rank_history_v1';
   const PAGE = 10;
-  const XUA = 'V=1&PN=WebApp&LANG=zh_CN&VN_CODE=100000000&LOC=CN&PLT=PC&DS=Android&UID=' + 'zpad' + '&OS=Android&OSV=14&DT=Phone';
+  const XUA = 'V=1&PN=WebApp&LANG=zh_CN&VN_CODE=100000000&LOC=CN&PLT=PC&DS=Android&UID=' + 'zpad' + '&OS=Windows&OSV=10&DT=PC';
   function uuid() {
     let u = localStorage.getItem('rank_uuid');
     if (!u || u.length < 30) {
@@ -23,6 +23,8 @@
     }
     return u;
   }
+
+  window.__imgErr = function (img) { img.onerror = null; img.src = 'app-icon.png'; };
 
   const state = { board: 'hot', tag: '', data: {}, hist: {}, loadedAt: null };
   const $ = (id) => document.getElementById(id);
@@ -58,7 +60,7 @@
         const a = it.app || {}; const s = a.stat || {};
         items.push({
           id: String(a.id), rank: from + i + 1, title: a.title || '',
-          icon: a.icon && (a.icon.small_url || a.icon.url),
+          icon: a.icon && (a.icon.small_url || a.icon.medium_url || a.icon.url),
           score: s.rating && s.rating.score, hits: s.hits_total,
           reviews: s.review_count, fans: s.fans_count,
           labels: a.title_labels || [],
@@ -124,10 +126,10 @@
     const rd = d.rank == null ? '' : (d.rank > 0 ? '<span class="up">↑' + d.rank + '</span>' : (d.rank < 0 ? '<span class="down">↓' + Math.abs(d.rank) + '</span>' : ''));
     return '<div class="rank-row">' +
       '<div class="rank-no">' + (idx != null ? idx : it.rank) + rd + '</div>' +
-      '<img class="rank-icon" src="' + (it.icon || 'app-icon.png') + '" loading="lazy">' +
-      '<div class="main"><div class="title">' + esc(it.title) + '</div>' +
-      '<div class="sub">评分 ' + (it.score || '—') + ' · 评价 ' + fmtHeat(it.reviews || 0) + ' · 粉丝 ' + fmtHeat(it.fans || 0) + '</div></div>' +
-      '<div class="heat"><div class="heat-v">' + fmtHeat(it.hits) + '</div><div class="heat-d ' + hd.cls + '">' + hd.text + '</div></div>' +
+      '<img class="rank-icon" src="' + (it.icon || '') + '">' +
+      '<div class="rank-main"><div class="rank-title">' + esc(it.title) + '</div>' +
+      '<div class="rank-sub">评分 ' + (it.score || '—') + ' · 评价 ' + fmtHeat(it.reviews || 0) + ' · 粉丝 ' + fmtHeat(it.fans || 0) + '</div></div>' +
+      '<div class="rank-heat"><div class="rank-heat-val">' + fmtHeat(it.hits) + '</div><div class="rank-heat-delta ' + hd.cls + '">' + hd.text + '</div></div>' +
     '</div>';
   }
 
@@ -148,12 +150,13 @@
       const up = all.filter(x => (deltaFor('hot', x).heat || 0) > 0).sort((a, b2) => (deltaFor('hot', b2).heat || 0) - (deltaFor('hot', a).heat || 0));
       const top = [...all].sort((a, b2) => (b2.hits || 0) - (a.hits || 0)).slice(0, 20);
       $('hint').textContent = state.tag ? ('汇总筛选：' + state.tag) : '三榜合并去重';
-      const card = (title, rows, showDelta) => rows.length ? '<div class="sum-card"><h3>' + title + '</h3>' + rows.slice(0, 15).map((r, i) => {
+      const card = (title, rows, showDelta) => rows.length ? '<div class="rank-sum-card"><h3>' + title + '</h3>' + rows.slice(0, 15).map((r, i) => {
         const d = fmtDelta(deltaFor('hot', r).heat);
-        return '<div class="row" style="margin:0 -12px;padding:8px 12px"><div class="no">' + (i + 1) + '</div>' +
+        return '<div class="rank-row">' +
+          '<div class="rank-no">' + (i + 1) + '</div>' +
           '<img class="rank-icon" src="' + (r.icon || 'app-icon.png') + '" loading="lazy">' +
-          '<div class="main"><div class="title">' + esc(r.title) + '</div><div class="sub">' + r.boardLabel + ' · 热度 ' + fmtHeat(r.hits) + '</div></div>' +
-          '<div class="heat"><div class="heat-v ' + d.cls + '">' + (showDelta ? d.text : '') + '</div></div></div>';
+          '<div class="rank-main"><div class="rank-title">' + esc(r.title) + '</div><div class="rank-sub">' + esc(r.boardLabel) + ' · 热度 ' + fmtHeat(r.hits) + '</div></div>' +
+          '<div class="rank-heat"><div class="rank-heat-val ' + d.cls + '">' + (showDelta ? d.text : '') + '</div></div></div>';
       }).join('') + '</div>' : '';
       list.innerHTML = card('涨幅榜', up, true) + card('热度榜', top, false) + (up.length || top.length ? '' : '<div class="empty">暂无数据</div>');
       return;
@@ -176,6 +179,7 @@
     const base = baseline(maker ? 'hot' : b);
     $('hint').textContent = (state.tag ? '筛选：' + state.tag + ' · ' : '') + (base ? ('变化基准 ' + fmtTime(base.ts)) : '首次运行，1 小时后开始记录变化');
     list.innerHTML = items.map((it, i) => rowHTML(it, maker ? 'hot' : b, maker ? i + 1 : null)).join('');
+    list.querySelectorAll('.rank-row').forEach((el, idx) => { el.addEventListener('click', () => openDetail(items[idx].id, maker ? 'TapTap制造' : (BOARDS.find(x => x.key === b) || {}).label)); });
   }
 
   async function load(force) {
@@ -197,6 +201,42 @@
     }
   }
 
+  function detailHTML(it, boardLabel) {
+    const d = deltaFor('hot', it);
+    const hd = fmtDelta(d.heat);
+    const rd = d.rank == null ? '—' : (d.rank > 0 ? '+' + d.rank : (d.rank < 0 ? String(d.rank) : '0'));
+    return '<div class="rank-detail-mask" id="rd-mask"></div>' +
+      '<div class="rank-detail-panel" id="rd-panel">' +
+      '<div class="rd-head"><img class="rd-icon" src="' + (it.icon || '') + '">' +
+      '<div class="rd-info"><div class="rd-title">' + esc(it.title) + '</div>' +
+      '<div class="rd-sub">' + (boardLabel || '') + (it.rank ? ' · 第 ' + it.rank + ' 名' : '') + '</div></div>' +
+      '<button class="rd-close" id="rd-close">×</button></div>' +
+      '<div class="rd-grid">' +
+      '<div class="rd-cell"><span>热度</span><b>' + fmtHeat(it.hits) + '</b></div>' +
+      '<div class="rd-cell"><span>1h 变化</span><b class="' + hd.cls + '">' + hd.text + '</b></div>' +
+      '<div class="rd-cell"><span>名次变化</span><b class="' + (d.rank > 0 ? 'up' : (d.rank < 0 ? 'down' : '')) + '">' + rd + '</b></div>' +
+      '<div class="rd-cell"><span>评分</span><b>' + (it.score || '—') + '</b></div>' +
+      '<div class="rd-cell"><span>评价</span><b>' + fmtHeat(it.reviews || 0) + '</b></div>' +
+      '<div class="rd-cell"><span>粉丝</span><b>' + fmtHeat(it.fans || 0) + '</b></div>' +
+      '</div>' +
+      '<div class="rd-tags">' + (it.tags || []).map(t => '<span class="rank-tag">' + esc(t) + '</span>').join('') + '</div>' +
+      '</div>';
+  }
+
+  function openDetail(id, boardLabel) {
+    let it = null;
+    for (const b of BOARDS) { const f = (state.data[b.key] || []).find(x => x.id === String(id)); if (f) { it = f; if (!boardLabel) boardLabel = b.label; break; } }
+    if (!it) for (const b of BOARDS) { const f = (state.data[b.key] || []).find(x => x.id === String(id)); if (f) it = f; }
+    if (!it) return;
+    const host = document.createElement('div');
+    host.id = 'rd-host';
+    host.innerHTML = detailHTML(it, boardLabel);
+    document.body.appendChild(host);
+    document.getElementById('rd-close').addEventListener('click', closeDetail);
+    document.getElementById('rd-mask').addEventListener('click', closeDetail);
+  }
+  function closeDetail() { const h = document.getElementById('rd-host'); if (h) h.remove(); }
+
   function doSearch() {
     const q = ($('q').value || '').trim().toLowerCase();
     if (!q) { render(); return; }
@@ -209,10 +249,10 @@
     if (!hits.length) { $('list').innerHTML = '<div class="empty">三榜中未找到「' + esc(q) + '」</div>'; $('hint').textContent = ''; return; }
     $('hint').textContent = '找到 ' + hits.length + ' 个';
     $('list').innerHTML = hits.slice(0, 30).map(h =>
-      '<div class="row"><div class="no">#' + h.rank + '</div>' +
-      '<img class="rank-icon" src="' + (h.icon || 'app-icon.png') + '" loading="lazy">' +
-      '<div class="main"><div class="title">' + esc(h.title) + '</div><div class="sub">' + h.boardLabel + ' · 评分 ' + (h.score || '—') + '</div></div>' +
-      '<div class="heat"><div class="heat-v">' + fmtHeat(h.hits) + '</div></div></div>'
+      '<div class="rank-row"><div class="rank-no">#' + h.rank + '</div>' +
+      '<img class="rank-icon" src="' + (h.icon || '') + '" loading="lazy">' +
+      '<div class="rank-main"><div class="rank-title">' + esc(h.title) + '</div><div class="rank-sub">' + esc(h.boardLabel) + ' · 评分 ' + (h.score || '—') + '</div></div>' +
+      '<div class="rank-heat"><div class="rank-heat-val">' + fmtHeat(h.hits) + '</div></div></div>'
     ).join('');
   }
 
@@ -224,7 +264,7 @@
       render();
     });
     $('tags').addEventListener('click', (e) => {
-      const btn = e.target.closest('.tag'); if (!btn) return;
+      const btn = e.target.closest('.rank-tag'); if (!btn) return;
       state.tag = btn.dataset.tag || '';
       render();
     });

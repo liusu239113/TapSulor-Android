@@ -119,6 +119,28 @@ class MainActivity : AppCompatActivity() {
                     return null
                 }
 
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val uri = request?.url ?: return false
+                    val scheme = uri.scheme?.lowercase() ?: return false
+                    // 非 http(s)（mailto/tel/自定 scheme）交给系统处理
+                    if (scheme != "http" && scheme != "https") {
+                        return try {
+                            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            true
+                        } catch (_: Exception) { false }
+                    }
+                    val host = uri.host ?: return false
+                    val keepInApp = host == "appassets.androidplatform.net" ||
+                        host.endsWith("taptap.cn") || host.endsWith("taptap.com") ||
+                        host.endsWith("tapapis.cn") || host.endsWith("tapimg.com")
+                    if (keepInApp) return false
+                    // 外部链接（开源仓库等）用系统默认浏览器打开，不在 App 内浏览
+                    return try {
+                        startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        true
+                    } catch (_: Exception) { false }
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     // 冷启动时主页 index.html 加载完成后,等待 webapp 自身开屏动画结束,
                     // 再显示底部导航栏,避免在开屏画面上露出 Tab 条(符合用户反馈要求)

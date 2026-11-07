@@ -41,7 +41,7 @@
       btn = document.createElement('button');
       btn.className = 'vs-btn';
       btn.setAttribute('data-view', 'rep');
-      btn.innerHTML = '<span>REP</span>';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="14.6" r="1.3"/></svg><span>REP</span>';
       sw.appendChild(btn);
     }
     return { sw, btn };
@@ -134,18 +134,21 @@
       const d = await devId();
       const appId = currentAppId();
       if (!d || !appId) throw new Error('缺少厂商或游戏 ID');
-      const raw = await window.electronAPI.repRevenue(appId, d);
-      let payload = null;
-      try { payload = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) {}
-      if (!payload) throw new Error('REP 返回异常');
-      if (payload.error === 'NO_TOKEN') throw new Error('REP 登录态获取失败：请在浏览器打开 rep.taptap.cn 完成一次授权');
-      if (payload.error === 'TIMEOUT') throw new Error('REP 授权超时，请重试');
-      if (!payload.ok) {
-        let msg = 'REP 接口请求失败' + (payload.status ? ' (' + payload.status + ')' : '');
-        if (payload.body && payload.body.indexOf('非法厂商Id') >= 0) msg = '当前账号没有这个游戏的 REP 数据';
+      // 先在后台 WebView 取 REP 令牌，再用 OkHttp 带鉴权头请求（接口已验证可用）
+      const token = await window.electronAPI.repToken(d);
+      if (!token) throw new Error('REP 登录态获取失败（未取到 op-jwt-token）');
+      const res = await window.electronAPI.httpGet(REP_URL, {
+        Authorization: token,
+        'x-app-id': String(appId),
+        'x-developer-id': String(d),
+        Referer: 'https://rep.taptap.cn/'
+      });
+      if (!res || !res.ok) {
+        let msg = 'REP 接口请求失败' + (res && res.status ? ' (' + res.status + ')' : '');
+        if (res && res.body && res.body.indexOf('非法厂商Id') >= 0) msg = '当前账号没有这个游戏的 REP 数据';
         throw new Error(msg);
       }
-      repData = JSON.parse(payload.body);
+      repData = JSON.parse(res.body);
       render(repData);
     } catch (e) {
       repError = 'REP 收益获取失败：' + (e && e.message ? e.message : e);
@@ -195,4 +198,128 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', waitSwitch);
   else waitSwitch();
+})();
+
+/* ==================== 趋势数值明细（收入/日活/ARPU/环比） ==================== */
+(function () {
+  'use strict';
+  var API = 'https://developer.taptap.cn/api';
+  var built = false;
+
+  function appId() {
+    try { var q = new URLSearchParams(location.search).get('app_id'); if (q) return q; } catch (e) {}
+    try { var g = JSON.parse(sessionStorage.getItem('currentGame') || 'null'); if (g && g.appId) return String(g.appId); } catch (e) {}
+    return null;
+  }
+  async function devId() {
+    try {
+      var d = await window.electronAPI.getActiveDeveloperId();
+      if (!d) d = await window.electronAPI.getDeveloperId();
+      return String(d || '');
+    } catch (e) { return ''; }
+  }
+  async function getJson(url) {
+    var r = await window.electronAPI.fetch(url);
+    if (!r || !r.ok) throw new Error('HTTP ' + (r && r.status));
+    return JSON.parse(r.body);
+  }
+
+  function monthRange() {
+    var d = new Date();
+    var y = d.getFullYear(), m = d.getMonth() + 1;
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var start = y + '-' + pad(m) + '-01';
+    var end = y + '-' + pad(m) + '-' + pad(d.getDate());
+    return { start: start, end: end };
+  }
+
+  function card() {
+    var el = document.getElementById('trend-detail-card');
+    if (el) return el;
+    var trend = document.getElementById('trend-card');
+    if (!trend) return null;
+    el = document.createElement('div');
+    el.id = 'trend-detail-card';
+    el.className = 'trend-detail-card';
+    el.hidden = true;
+    trend.parentNode.insertBefore(el, trend.nextSibling);
+    return el;
+  }
+
+  function render(rows) {
+    var el = card();
+    if (!el) return;
+    if (!rows.length) { el.innerHTML = '<div class="rep-empty">暂无每日数据</div>'; return; }
+    var html = '<div class="tdc-title">每日数值明细</div><div class="tdc-table">' +
+      '<div class="tdc-row tdc-head"><span>日期</span><span>收入</span><span>日活</span><span>ARPU</span><span>环比</span></div>';
+    rows.forEach(function (r, i) {
+      var prev = rows[i - 1];
+      var mom = (prev && prev.rev > 0) ? ((r.rev - prev.rev) / prev.rev * 100) : null;
+      var momTxt = mom == null ? '—' : ((mom > 0 ? '+' : '') + mom.toFixed(1) + '%');
+      var momCls = mom == null ? '' : (mom > 0 ? 'up' : (mom < 0 ? 'down' : ''));
+      html += '<div class="tdc-row">' +
+        '<span>' + r.date.slice(5) + '</span>' +
+        '<span>¥' + r.rev.toFixed(2) + '</span>' +
+        '<span>' + (r.dau == null ? '—' : r.dau) + '</span>' +
+        '<span>' + (r.dau ? '¥' + (r.rev / r.dau).toFixed(4) : '—') + '</span>' +
+        '<span class="' + momCls + '">' + momTxt + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  async function load() {
+    var el = card();
+    if (!el) return;
+    var app = appId(), dev = await devId();
+    if (!app || !dev) return;
+    var rg = monthRange();
+    el.hidden = false;
+    el.innerHTML = '<div class="rep-empty">数值明细加载中…</div>';
+    try {
+      var revUrl = API + '/mini-app/v1/ad/payout-report-data?developer_id=' + dev + '&app_id=' + app +
+        '&start_time=' + rg.start + '&end_time=' + rg.end;
+      var dauUrl = API + '/mini-app/v1/stats-by-day/device?developer_id=' + dev + '&app_id=' + app +
+        '&start_date=' + rg.start + '&end_date=' + rg.end;
+      var both = await Promise.all([getJson(revUrl).catch(function () { return null; }), getJson(dauUrl).catch(function () { return null; })]);
+      var revList = (both[0] && both[0].data && both[0].data.list) || [];
+      var dauList = (both[1] && both[1].data && both[1].data.list) || [];
+      var dauMap = {};
+      dauList.forEach(function (d) { dauMap[d.date] = d.active_device_num; });
+      var rows = revList.map(function (r) {
+        return { date: r.date, rev: Number(r.revenue) || 0, dau: dauMap[r.date] == null ? null : dauMap[r.date] };
+      });
+      render(rows);
+    } catch (e) {
+      el.innerHTML = '<div class="rep-empty">数值明细加载失败：' + (e.message || e) + '</div>';
+    }
+  }
+
+  function bind() {
+    var sw = document.getElementById('view-switch');
+    if (sw && !built) {
+      built = true;
+      sw.addEventListener('click', function (e) {
+        var btn = e.target.closest('.vs-btn');
+        if (!btn) return;
+        var v = btn.getAttribute('data-view');
+        var el = card();
+        if (!el) return;
+        if (v === 'trend') { el.hidden = false; if (!el.dataset.loaded) { el.dataset.loaded = '1'; load(); } }
+        else if (v === 'rep') { el.hidden = true; }
+        else { el.hidden = true; }
+      });
+    }
+  }
+  function wait() {
+    var n = 0;
+    var t = setInterval(function () {
+      n++;
+      if (document.getElementById('view-switch')) { clearInterval(t); bind(); }
+      else if (n > 40) clearInterval(t);
+    }, 500);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wait);
+  else wait();
 })();
