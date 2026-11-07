@@ -181,8 +181,13 @@
   async function load(force) {
     $('list').innerHTML = '<div class="empty">榜单加载中…</div>';
     try {
-      const results = await Promise.all(BOARDS.map(b => fetchBoard(b.key, b.total).catch(() => [])));
+      const errors = [];
+      const results = await Promise.all(BOARDS.map(b => fetchBoard(b.key, b.total).catch(e => { errors.push(b.label + ': ' + (e.message || e)); return []; })));
       BOARDS.forEach((b, i) => { state.data[b.key] = results[i] || []; });
+      if (errors.length === BOARDS.length) {
+        $('list').innerHTML = '<div class="empty">榜单请求失败<br>' + errors.map(esc).join('<br>') + '</div>';
+        return;
+      }
       state.hist = loadHist();
       state.loadedAt = Date.now();
       BOARDS.forEach(b => { if ((state.data[b.key] || []).length) saveSnap(b.key, state.data[b.key]); });
