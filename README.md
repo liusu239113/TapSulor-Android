@@ -27,7 +27,7 @@
 | 平台 | 下载地址 | 说明 |
 |---|---|---|
 | 📱 **Android** | [最新 Releases](https://github.com/liusu239113/TapSulor-Android/releases) · [下载站](https://ark.yanyususu.online/tapsulor/) | APK 安装包，Android 14+ |
-| 💻 **Windows 电脑版** | **[安装版 Setup（推荐）](https://github.com/liusu239113/TapSulor-Desktop/releases/latest/download/TapSulor-Setup-1.0.3-x64.exe)**<br>**[便携版 Portable（免安装）](https://github.com/liusu239113/TapSulor-Desktop/releases/latest/download/TapSulor-Portable-1.0.3-x64.exe)** | 源码与全部版本：[TapSulor-Desktop](https://github.com/liusu239113/TapSulor-Desktop) · [Desktop Releases](https://github.com/liusu239113/TapSulor-Desktop/releases) |
+| 💻 **Windows 电脑版** | **[安装版 Setup（推荐）](https://github.com/liusu239113/TapSulor-Desktop/releases/download/latest/TapSulor-Setup-1.0.3-x64.exe)**<br>**[便携版 Portable（免安装）](https://github.com/liusu239113/TapSulor-Desktop/releases/download/latest/TapSulor-Portable-1.0.3-x64.exe)** | 源码与全部版本：[TapSulor-Desktop](https://github.com/liusu239113/TapSulor-Desktop) · [Desktop Releases](https://github.com/liusu239113/TapSulor-Desktop/releases) |
 | 🍎 **iOS** | [源码仓库](https://github.com/liusu239113/TapSulor-iOS) | **不提供 IPA**，需在 Mac 上用 Xcode 自行编译签名，见下方说明 |
 
 > 💻 **关于电脑版**：由 `TapSulor-Desktop` 仓库 main 分支自动构建，标记为开发版（Pre-release）。安装版会自动创建开始菜单和桌面快捷方式；便携版免安装，双击即用。
