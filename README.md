@@ -64,7 +64,15 @@ APK 输出路径：`app/build/outputs/apk/release/`
 
 ## 📄 开源协议
 
-本项目采用 **GNU General Public License v3.0** — 详见 [LICENSE](LICENSE) 文件。
+本项目采用 **GNU General Public License v3.0**（GPL-3.0）— 详见 [LICENSE](LICENSE) 文件。
+
+**Copyright (C) 2026 流苏水寒 <2391130219@qq.com> (GitHub: liusu239113)**
+
+依据 GPL-3.0：
+
+- ✅ 你可以自由使用、修改、再分发本项目；
+- ⚠️ **必须保留**上述版权声明与作者署名「流苏水寒」，不得移除或篡改；
+- ⚠️ 任何修改后向外分发的作品（含编译出的 APK / IPA / EXE），**整体必须以 GPL-3.0 公开完整源码**，不得闭源分发。
 
 ---
 
