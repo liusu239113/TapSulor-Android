@@ -32,6 +32,7 @@ class RepAuthActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var accountManager: AccountManager
+    private var pollGen = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +47,14 @@ class RepAuthActivity : AppCompatActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportMultipleWindows(true)
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.setSupportZoom(true)
+            settings.builtInZoomControls = true
+            settings.displayZoomControls = false
+            // 与 LoginActivity 完全一致：桌面 UA + 宽视口，TapTap 才会给扫码登录页
             settings.userAgentString =
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             val cm = android.webkit.CookieManager.getInstance()
@@ -68,7 +77,18 @@ class RepAuthActivity : AppCompatActivity() {
 
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
-                    pollToken(0)
+                    pollGen++
+                    pollToken(pollGen, 0)
+                }
+            }
+            webChromeClient = object : android.webkit.WebChromeClient() {
+                override fun onCreateWindow(
+                    view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?
+                ): Boolean {
+                    val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                    transport.webView = view
+                    resultMsg.sendToTarget()
+                    return true
                 }
             }
         }
@@ -76,8 +96,8 @@ class RepAuthActivity : AppCompatActivity() {
         webView.loadUrl("https://rep.taptap.cn/$developerId/")
     }
 
-    private fun pollToken(tries: Int) {
-        if (tries > 45 || isFinishing || isDestroyed) return
+    private fun pollToken(gen: Int, tries: Int) {
+        if (gen != pollGen || tries > 45 || isFinishing || isDestroyed) return
         webView.evaluateJavascript(
             "(function(){try{return JSON.stringify({token:localStorage.getItem('op-jwt-token')||''," +
             "url:location.href,text:(document.body?document.body.innerText:'').slice(0,200)})}catch(e){return ''}})()"
@@ -118,7 +138,7 @@ class RepAuthActivity : AppCompatActivity() {
                     null
                 )
             }
-            if (!isFinishing) webView.postDelayed({ pollToken(tries + 1) }, 700)
+            if (!isFinishing) webView.postDelayed({ pollToken(gen, tries + 1) }, 700)
         }
     }
 
