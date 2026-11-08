@@ -28,6 +28,11 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
+      - name: Restore signing keystore
+        run: |
+          mkdir -p keystore
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore/tapsulor-release.jks
+
       - name: Extract version name
         id: version
         run: |
@@ -36,6 +41,10 @@ jobs:
           echo "Version: $VER"
 
       - name: Build APK
+        env:
+          TAPSULOR_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          TAPSULOR_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          TAPSULOR_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK

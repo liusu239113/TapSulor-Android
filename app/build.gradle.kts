@@ -8,10 +8,17 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../keystore/tapsulor-release.jks")
-            storePassword = "tapsulor2024"
-            keyAlias = "tapsulor"
-            keyPassword = "tapsulor2024"
+            // 签名文件与密码不进仓库：CI 从 GitHub Secrets 恢复 keystore 并注入环境变量；
+            // 本地构建可用 TAPSULOR_* 环境变量，或 gradle.properties 里的 tapsulor.* 属性。
+            val ksPath = System.getenv("TAPSULOR_KEYSTORE_PATH") ?: "../keystore/tapsulor-release.jks"
+            val ksFile = file(ksPath)
+            if (ksFile.exists()) storeFile = ksFile
+            storePassword = System.getenv("TAPSULOR_STORE_PASSWORD")
+                ?: (project.findProperty("tapsulor.storePassword") as String?) ?: ""
+            keyAlias = System.getenv("TAPSULOR_KEY_ALIAS")
+                ?: (project.findProperty("tapsulor.keyAlias") as String?) ?: "tapsulor"
+            keyPassword = System.getenv("TAPSULOR_KEY_PASSWORD")
+                ?: (project.findProperty("tapsulor.keyPassword") as String?) ?: ""
         }
     }
 
