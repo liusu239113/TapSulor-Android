@@ -79,9 +79,23 @@ class RepAuthActivity : AppCompatActivity() {
     private fun pollToken(tries: Int) {
         if (tries > 45 || isFinishing || isDestroyed) return
         webView.evaluateJavascript(
-            "(function(){try{return localStorage.getItem('op-jwt-token')||''}catch(e){return ''}})()"
+            "(function(){try{return JSON.stringify({token:localStorage.getItem('op-jwt-token')||''," +
+            "url:location.href,text:(document.body?document.body.innerText:'').slice(0,200)})}catch(e){return ''}})()"
         ) { v ->
-            val token = (v ?: "").trim().trim('"')
+            val packed = (v ?: "").trim()
+            var token = ""
+            var pageUrl = ""
+            var pageText = ""
+            try {
+                val inner = if (packed.startsWith("\"") && packed.endsWith("\"")) {
+                    com.google.gson.JsonParser().parse(packed).asString
+                } else packed
+                val o = com.google.gson.JsonParser().parse(inner).asJsonObject
+                token = o.get("token")?.asString ?: ""
+                pageUrl = o.get("url")?.asString ?: ""
+                pageText = o.get("text")?.asString ?: ""
+            } catch (_: Exception) { }
+
             if (token.isNotEmpty()) {
                 // 把这次登录/授权过程中拿到的 accounts/rep Cookie 回存到账号仓库，
                 // 否则下次冷启动 restore 会再次丢掉 SSO 会话
@@ -90,9 +104,21 @@ class RepAuthActivity : AppCompatActivity() {
                 } catch (_: Exception) { }
                 setResult(Activity.RESULT_OK)
                 finish()
-            } else if (!isFinishing) {
-                webView.postDelayed({ pollToken(tries + 1) }, 700)
+                return@evaluateJavascript
             }
+            // 授权页自动点「确认登录」，用户只需要完成登录这一步
+            if (pageUrl.contains("accounts.taptap.cn/authorize") ||
+                pageText.contains("确认登录") || pageText.contains("授权登录") || pageText.contains("用户授权")
+            ) {
+                webView.evaluateJavascript(
+                    "(function(){var els=[].slice.call(document.querySelectorAll('button,a,[role=button],span,div'));" +
+                    "var b=els.find(function(e){var t=(e.innerText||'').trim();" +
+                    "return t==='确认登录'||t==='授权'||t==='同意'||t==='允许';});" +
+                    "if(b){b.click();return 'clicked'}return 'no'})()",
+                    null
+                )
+            }
+            if (!isFinishing) webView.postDelayed({ pollToken(tries + 1) }, 700)
         }
     }
 
