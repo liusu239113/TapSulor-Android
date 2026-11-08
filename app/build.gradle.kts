@@ -21,7 +21,7 @@ android {
         applicationId = "com.taptapgain"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
+        versionCode = 9
         versionName = "1.0.6"
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -70,6 +70,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("androidx.browser:browser:1.8.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
     // GeckoView(Firefox 内核) — 真正内嵌在 App 内的浏览器组件,支持 SharedArrayBuffer/WASM 多线程
     // 不同于 WebView,GeckoView 自带独立的站点隔离能力(Fission),可直接运行 SCE/UrhoX 多线程 WASM 游戏
     // 选用 153 版(2026-07)。实际 API 表面(已通过解包 arm64 AAR class 文件确认):

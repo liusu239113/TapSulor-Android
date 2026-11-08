@@ -73,6 +73,8 @@ class MainActivity : AppCompatActivity() {
         accountManager = AccountManager(this)
         apiClient = TapTapApiClient(accountManager)
         updateChecker = UpdateChecker(this)
+        // 后台热度快照：关掉 App 也每 20 分钟记一次，供榜单涨幅/走势使用
+        RankHistoryWorker.schedule(this)
 
         setContentView(R.layout.activity_main)
         tabContainer = findViewById(R.id.tab_container)

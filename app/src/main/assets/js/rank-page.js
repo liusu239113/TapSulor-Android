@@ -530,7 +530,7 @@
     $('hint').textContent = (state.tag ? '筛选：' + state.tag + ' · ' : '') +
       (firstStat.baseAt
         ? (PERIODS[state.period] + '涨幅基准 ' + fmtTime(firstStat.baseAt) + (firstStat.approx ? '（历史不足，取最早快照）' : ''))
-        : '已开始记录快照（每 20 分钟一次），攒够一个周期就出涨幅');
+        : '后台每 20 分钟自动记录，关掉 App 也会继续；攒够一个周期就出涨幅');
     // 只给当前列表里涨得最猛的 5 个加深红标记，避免“人人都是红色”
     const hotIds = new Set(
       items.map(it => ({ id: it.id, p: (momentum(rowKey, it)[state.period] || {}).p, hits: it.hits || 0 }))
@@ -558,6 +558,20 @@
         return;
       }
       state.hist = loadHist();
+      // 合并后台 WorkManager 记录的快照（关掉 App 也在记）
+      try {
+        const bg = (window.electronAPI && window.electronAPI.getRankHistory)
+          ? window.electronAPI.getRankHistory() : null;
+        if (bg && typeof bg === 'object') {
+          for (const k of Object.keys(bg)) {
+            const map = new Map();
+            (bg[k] || []).forEach(s => { if (s && s.ts) map.set(s.ts, s); });
+            (state.hist[k] || []).forEach(s => { if (s && s.ts) map.set(s.ts, s); });
+            state.hist[k] = [...map.values()].sort((a, b) => a.ts - b.ts).slice(-KEEP_POINTS);
+          }
+          try { localStorage.setItem(STORE, JSON.stringify(state.hist)); } catch (_) {}
+        }
+      } catch (_) {}
       state.loadedAt = Date.now();
       BOARDS.forEach(b => { if ((state.data[b.key] || []).length) saveSnap(b.key, state.data[b.key]); });
       render();

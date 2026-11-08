@@ -86,6 +86,14 @@ class WebAppInterface(
     /** 暴露 APP 版本号给 Web 端（来自 BuildConfig.VERSION_NAME，与 build.gradle.kts 同步） */
     @JavascriptInterface fun getAppVersion(): String = BuildConfig.VERSION_NAME
 
+    /** 后台 WorkManager 写入的热度快照（页面打开时合并进走势） */
+    @JavascriptInterface fun getRankHistory(): String {
+        return try {
+            activity.getSharedPreferences("taptap_prefs", Context.MODE_PRIVATE)
+                .getString("rank_bg_history_v1", "{}") ?: "{}"
+        } catch (_: Exception) { "{}" }
+    }
+
     /** 触发一次手动检查更新（非静默；已是最新或失败都会 Toast 提示，发现新版本则弹窗） */
     @JavascriptInterface fun checkUpdate() {
         activity.runOnUiThread { updateChecker.check(silent = false) }
