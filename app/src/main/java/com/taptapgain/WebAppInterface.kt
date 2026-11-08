@@ -210,7 +210,8 @@ class WebAppInterface(
             val wv = WebView(activity)
             wv.settings.javaScriptEnabled = true
             wv.settings.domStorageEnabled = true
-            wv.settings.userAgentString = wv.settings.userAgentString.replace("; wv", "")
+            wv.settings.userAgentString =
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             val cm = android.webkit.CookieManager.getInstance()
             cm.setAcceptCookie(true)
             cm.setAcceptThirdPartyCookies(wv, true)
@@ -306,7 +307,8 @@ class WebAppInterface(
             val wv = WebView(activity)
             wv.settings.javaScriptEnabled = true
             wv.settings.domStorageEnabled = true
-            wv.settings.userAgentString = wv.settings.userAgentString.replace("; wv", "")
+            wv.settings.userAgentString =
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             val cm = android.webkit.CookieManager.getInstance()
             cm.setAcceptCookie(true); cm.setAcceptThirdPartyCookies(wv, true)
             // 关键：把当前账号在 OkHttp 里的登录 Cookie 同步进 WebView，否则后台页面是未登录状态
