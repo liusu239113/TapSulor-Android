@@ -108,6 +108,8 @@ class AccountManager(private val context: Context) {
         "https://developer.taptap.cn/",
         "https://www.taptap.cn/",
         "https://passport.taptap.cn/",
+        "https://accounts.taptap.cn/",
+        "https://rep.taptap.cn/",
         "https://taptap.cn/"
     )
 

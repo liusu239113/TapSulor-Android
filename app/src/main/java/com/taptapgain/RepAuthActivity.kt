@@ -31,12 +31,13 @@ class RepAuthActivity : AppCompatActivity() {
     }
 
     private lateinit var webView: WebView
+    private lateinit var accountManager: AccountManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableImmersiveMode()
         val developerId = intent?.getStringExtra(EXTRA_DEVELOPER_ID).orEmpty()
-        val accountManager = AccountManager(this)
+        accountManager = AccountManager(this)
 
         webView = WebView(this).apply outer@{
             layoutParams = FrameLayout.LayoutParams(
@@ -81,6 +82,11 @@ class RepAuthActivity : AppCompatActivity() {
         ) { v ->
             val token = (v ?: "").trim().trim('"')
             if (token.isNotEmpty()) {
+                // 把这次登录/授权过程中拿到的 accounts/rep Cookie 回存到账号仓库，
+                // 否则下次冷启动 restore 会再次丢掉 SSO 会话
+                try {
+                    accountManager.importCookiesFromWebView(accountManager.getCurrentAccountId())
+                } catch (_: Exception) { }
                 setResult(Activity.RESULT_OK)
                 finish()
             } else if (!isFinishing) {
@@ -90,6 +96,10 @@ class RepAuthActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        // 即使没走完授权，只要在页面里登录过，也把 accounts 会话回存
+        try {
+            accountManager.importCookiesFromWebView(accountManager.getCurrentAccountId())
+        } catch (_: Exception) { }
         if (webView.canGoBack()) webView.goBack() else {
             setResult(Activity.RESULT_CANCELED)
             super.onBackPressed()
