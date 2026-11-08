@@ -30,7 +30,8 @@
 
   const state = {
     board: 'hot', tag: '', data: {}, hist: {}, loadedAt: null,
-    cal: null, calError: null, calAt: 0, calType: 'all', calSource: 'all'
+    cal: null, calError: null, calAt: 0, calType: 'all', calSource: 'all',
+    period: (localStorage.getItem('rank_period') || 'day')
   };
   const $ = (id) => document.getElementById(id);
 
@@ -49,16 +50,27 @@
   const fmtTime = (ts) => { const d = new Date(ts); const p = x => String(x).padStart(2, '0'); return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); };
 
   const SNAP_MIN_MS = 5 * 60 * 1000;   // 5 分钟内重复刷新不重复记点
-  const KEEP_POINTS = 96;             // 20 分钟一个点 ≈ 最近 32 小时
+  const KEEP_POINTS = 504;            // 20 分钟一个点 ≈ 最近 7 天
   const SPARK_POINTS = 12;            // 行内迷你走势最多 12 个点
+  const PERIODS = { h1: '1小时', day: '今日', week: '本周' };
 
   const pctOf = (cur, base) => (cur == null || base == null || base <= 0) ? null : (cur - base) / base * 100;
+
+  // 快照条目兼容两种格式：旧对象 {id,rank,hits} 与新的紧凑数组 [id,rank,hits]
+  function itemOf(snap, id) {
+    const list = snap && snap.items ? snap.items : [];
+    for (const x of list) {
+      if (Array.isArray(x)) { if (String(x[0]) === id) return { rank: x[1], hits: x[2] }; }
+      else if (x && String(x.id) === id) return x;
+    }
+    return null;
+  }
 
   function seriesFor(key, id) {
     const arr = state.hist[key] || [];
     const out = [];
     for (const s of arr) {
-      const it = (s.items || []).find(x => x.id === id);
+      const it = itemOf(s, id);
       if (it && it.hits != null) out.push(it.hits);
     }
     return out.slice(-SPARK_POINTS);
@@ -88,28 +100,50 @@
     return Math.round(m / 60) + '小时';
   }
 
+  function startOfDay(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+  function startOfWeek(ts) {
+    const d = new Date(ts);
+    const back = (d.getDay() + 6) % 7; // 周一为一周起点
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - back).getTime();
+  }
+
+  // 取 target 之前最近的一条快照；没有则退回最早一条并标记 approx（自 HH:mm 起）
+  function baselineFor(arr, target) {
+    let pick = null;
+    for (const s of arr) if (s.ts <= target) pick = s;
+    if (pick) return { snap: pick, approx: false };
+    return arr.length ? { snap: arr[0], approx: true } : null;
+  }
+
+  function statAt(arr, item, target, now) {
+    const base = baselineFor(arr, target);
+    if (!base) return { p: null, delta: null, win: null, approx: false, baseAt: null };
+    const prev = itemOf(base.snap, item.id);
+    if (!prev || prev.hits == null || item.hits == null) {
+      return { p: null, delta: null, win: now - base.snap.ts, approx: base.approx, baseAt: base.snap.ts };
+    }
+    return {
+      p: pctOf(item.hits, prev.hits),
+      delta: item.hits - prev.hits,
+      win: now - base.snap.ts,
+      approx: base.approx,
+      baseAt: base.snap.ts
+    };
+  }
+
   function momentum(key, item) {
     const arr = state.hist[key] || [];
     const now = Date.now();
-    const t1 = now - 3600000, t24 = now - 24 * 3600000;
-    let base1 = null, base24 = null;
-    for (const s of arr) { if (s.ts <= t1) base1 = s; if (s.ts <= t24) base24 = s; }
-    // 历史不足 1 小时时，用最早一个 ≥3 分钟的点做基准（太短的窗口噪声大）
-    if (!base1 && arr.length && now - arr[0].ts >= 3 * 60000) base1 = arr[0];
-    const hitOf = (s) => {
-      if (!s) return null;
-      const x = (s.items || []).find(i => i.id === item.id);
-      return x ? x.hits : null;
-    };
-    const h1 = hitOf(base1), h24 = hitOf(base24);
-    const prevRank = base1 ? (((base1.items || []).find(i => i.id === item.id)) || {}).rank : null;
+    const h1 = statAt(arr, item, now - 3600000, now);
+    const day = statAt(arr, item, startOfDay(now), now);
+    const week = statAt(arr, item, startOfWeek(now), now);
+    const rankBase = baselineFor(arr, now - 3600000);
+    const prevRank = rankBase ? itemOf(rankBase.snap, item.id) : null;
     return {
-      p1: pctOf(item.hits, h1),
-      p24: pctOf(item.hits, h24),
-      h1Delta: (h1 != null && item.hits != null) ? item.hits - h1 : null,
-      rankDelta: prevRank != null ? prevRank - item.rank : null,
-      win1: base1 ? (now - base1.ts) : null,
-      win24: base24 ? (now - base24.ts) : null,
+      h1: h1, day: day, week: week,
+      p1: h1.p, pDay: day.p, pWeek: week.p,
+      h1Delta: h1.delta, dayDelta: day.delta, weekDelta: week.delta,
+      rankDelta: prevRank && prevRank.rank != null ? prevRank.rank - item.rank : null,
       series: seriesFor(key, item.id)
     };
   }
@@ -191,13 +225,24 @@
     try { all = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (_) {}
     const arr = Array.isArray(all[key]) ? all[key] : [];
     const now = Date.now();
-    const snap = { ts: now, items: items.map(i => ({ id: i.id, rank: i.rank, hits: i.hits })) };
+    // 紧凑数组存储，体积约为对象格式的一半，才放得下一周的数据
+    const snap = { ts: now, items: items.map(i => [i.id, i.rank, i.hits]) };
     const last = arr[arr.length - 1];
     // 5 分钟内重刷只更新最后一点，避免把曲线加密成一堆重复值
     if (last && now - last.ts < SNAP_MIN_MS) arr[arr.length - 1] = snap; else arr.push(snap);
     arr.sort((a, b) => a.ts - b.ts);
     all[key] = arr.slice(-KEEP_POINTS);
-    try { localStorage.setItem(STORE, JSON.stringify(all)); } catch (_) {}
+    try {
+      localStorage.setItem(STORE, JSON.stringify(all));
+    } catch (_) {
+      // 配额不足：保留每类最近 40%，再写一次
+      const trimmed = {};
+      for (const k of Object.keys(all)) {
+        const a = all[k] || [];
+        trimmed[k] = a.slice(-Math.max(24, Math.floor(a.length * 0.4)));
+      }
+      try { localStorage.setItem(STORE, JSON.stringify(trimmed)); } catch (_) { }
+    }
   }
   function loadHist() {
     try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (_) { return {}; }
@@ -234,19 +279,30 @@
   }
   const matchTag = (it) => !state.tag || (it.tags || []).includes(state.tag);
 
+  function syncPeriodUI() {
+    const box = $('periods');
+    if (!box) return;
+    box.querySelectorAll('.rank-period').forEach(b => b.classList.toggle('is-active', b.getAttribute('data-p') === state.period));
+  }
+
   function rowHTML(it, key, idx, isHot) {
     const m = momentum(key, it);
-    const p1 = m.p1;
+    const st = m[state.period] || m.day;
+    const p = st ? st.p : null;
     const rd = m.rankDelta == null || m.rankDelta === 0 ? '' : (m.rankDelta > 0
       ? '<span class="rank-move up" title="比上次快照上升' + m.rankDelta + '名">↑' + m.rankDelta + '</span>'
       : '<span class="rank-move down" title="比上次快照下降' + Math.abs(m.rankDelta) + '名">↓' + Math.abs(m.rankDelta) + '</span>');
     let delta;
-    if (p1 == null) {
+    if (p == null) {
       delta = '<div class="rank-heat-delta flat">' + (m.series.length > 1 ? '走势记录中' : '记录中') + '</div>';
     } else {
-      const cls = p1 > 0.05 ? 'up' : (p1 < -0.05 ? 'down' : 'flat');
-      const body = Math.abs(p1) < 0.05 ? '持平' : ((p1 > 0 ? '+' : '') + p1.toFixed(1) + '%');
-      delta = '<div class="rank-heat-delta ' + cls + '">' + winLabel(m.win1 || 3600000) + ' ' + body + '</div>';
+      const cls = p > 0.05 ? 'up' : (p < -0.05 ? 'down' : 'flat');
+      const body = Math.abs(p) < 0.05 ? '持平' : ((p > 0 ? '+' : '') + p.toFixed(1) + '%');
+      const label = (st.approx && st.baseAt) ? ('自' + fmtClock(st.baseAt)) : PERIODS[state.period];
+      const tip = (st.approx && st.baseAt)
+        ? ('没有' + PERIODS[state.period] + '前的快照，基准取 ' + fmtTime(st.baseAt))
+        : ('相对' + PERIODS[state.period] + '起点');
+      delta = '<div class="rank-heat-delta ' + cls + '" title="' + tip + '">' + label + ' ' + body + '</div>';
     }
     const hot = isHot ? ' is-hot' : '';
     return '<div class="rank-row' + hot + '">' +
@@ -254,11 +310,11 @@
       '<img class="rank-icon" src="' + (it.icon || '') + '">' +
       '<div class="rank-main"><div class="rank-title">' + esc(it.title) + '</div>' +
       '<div class="rank-sub">评分 ' + (it.score || '—') + ' · 评价 ' + fmtHeat(it.reviews || 0) + ' · 粉丝 ' + fmtHeat(it.fans || 0) + '</div></div>' +
-      '<div class="rank-heat"><div class="rank-heat-val">' + fmtHeat(it.hits) + '</div>' + delta + sparkSVG(m.series, p1 != null && p1 > 0) + '</div>' +
+      '<div class="rank-heat"><div class="rank-heat-val">' + fmtHeat(it.hits) + '</div>' + delta + sparkSVG(m.series, p != null && p > 0) + '</div>' +
     '</div>';
   }
 
-  /** 汇总页的“今日飙升”：三榜合并、跟随分类标签，按热度涨幅排 TOP5 */
+  /** 汇总页的飙升榜：三榜合并、跟随分类标签与所选周期 */
   function moversCard() {
     const byId = new Map();
     for (const b of BOARDS) {
@@ -266,22 +322,25 @@
         if ((it.hits || 0) < 5000) continue;
         if (!matchTag(it)) continue;
         const m = momentum(b.key, it);
-        if (m.p1 == null || m.p1 <= 0.5 || m.h1Delta <= 0) continue;
+        const st = m[state.period] || m.day;
+        if (!st || st.p == null || st.p <= 0.5) continue;
         const prev = byId.get(it.id);
-        if (!prev || m.p1 > prev.m.p1) byId.set(it.id, { it, m });
+        if (!prev || st.p > prev.st.p) byId.set(it.id, { it, m, st });
       }
     }
-    const top = [...byId.values()].sort((a, b2) => b2.m.p1 - a.m.p1).slice(0, 5);
+    const top = [...byId.values()].sort((a, b2) => b2.st.p - a.st.p).slice(0, 5);
     if (!top.length) return '';
-    const win = top[0].m.win1 ? winLabel(top[0].m.win1) : '1小时';
-    return '<div class="rank-sum-card rank-movers-card"><h3>今日飙升<span>近' + win + '热度涨幅' +
+    const st0 = top[0].st;
+    const win = (st0.approx && st0.baseAt) ? ('自' + fmtClock(st0.baseAt)) : PERIODS[state.period];
+    return '<div class="rank-sum-card rank-movers-card"><h3>' + PERIODS[state.period] + '飙升<span>' +
+      (st0.approx && st0.baseAt ? '基准自 ' + fmtTime(st0.baseAt) : '相对' + PERIODS[state.period] + '起点') +
       (state.tag ? ' · ' + esc(state.tag) : '') + '</span></h3>' +
-      top.map(({ it, m }, i) =>
+      top.map(({ it, st }, i) =>
         '<div class="rm-row" data-id="' + esc(it.id) + '">' +
           '<span class="rm-no">' + (i + 1) + '</span>' +
           '<img class="rm-icon" src="' + (it.icon || '') + '" loading="lazy">' +
           '<span class="rm-name">' + esc(it.title) + '</span>' +
-          '<span class="rm-pct">+' + m.p1.toFixed(1) + '%</span>' +
+          '<span class="rm-pct">+' + st.p.toFixed(1) + '%</span>' +
         '</div>'
       ).join('') + '</div>';
   }
@@ -407,6 +466,9 @@
     const list = $('list');
     const b = state.board;
 
+    const periodsBox = $('periods');
+    if (periodsBox) periodsBox.hidden = (b === 'today');
+    syncPeriodUI();
     if (b === 'today') { renderToday(list); return; }
 
     if (b === 'summary') {
@@ -414,21 +476,34 @@
       for (const bd of BOARDS) for (const it of (state.data[bd.key] || [])) {
         if (!matchTag(it)) continue;
         const cur = merged.get(it.id);
-        if (!cur || (it.hits || 0) > (cur.hits || 0)) merged.set(it.id, Object.assign({}, it, { boardLabel: bd.label }));
+        if (!cur || (it.hits || 0) > (cur.hits || 0)) {
+          merged.set(it.id, Object.assign({}, it, { boardLabel: bd.label, boardKey: bd.key }));
+        }
       }
       const all = [...merged.values()];
-      const up = all.filter(x => (deltaFor('hot', x).heat || 0) > 0).sort((a, b2) => (deltaFor('hot', b2).heat || 0) - (deltaFor('hot', a).heat || 0));
+      const pMap = new Map();
+      all.forEach(x => {
+        // 关键：用该游戏所在榜单的历史快照算，不能一律用热门榜
+        const st = momentum(x.boardKey || 'hot', x)[state.period] || {};
+        if (st.p != null) pMap.set(x.id, st.p);
+      });
+      const up = all.filter(x => (pMap.get(x.id) || 0) > 0)
+        .sort((a, b2) => (pMap.get(b2.id) || 0) - (pMap.get(a.id) || 0))
+        .slice(0, 20);
       const top = [...all].sort((a, b2) => (b2.hits || 0) - (a.hits || 0)).slice(0, 20);
-      $('hint').textContent = state.tag ? ('汇总筛选：' + state.tag) : '三榜合并去重';
+      $('hint').textContent = (state.tag ? ('汇总筛选：' + state.tag + ' · ') : '三榜合并去重 · ') +
+        ('榜单涨幅按「' + PERIODS[state.period] + '」统计，周期可在榜单页顶部切换');
       const card = (title, rows, showDelta) => rows.length ? '<div class="rank-sum-card"><h3>' + title + '</h3>' + rows.slice(0, 15).map((r, i) => {
-        const d = fmtDelta(deltaFor('hot', r).heat);
+        const pv = pMap.get(r.id);
+        const cls = pv == null ? 'flat' : (pv > 0.05 ? 'up' : (pv < -0.05 ? 'down' : 'flat'));
+        const txt = pv == null ? '' : ((pv > 0 ? '+' : '') + pv.toFixed(1) + '%');
         return '<div class="rank-row">' +
           '<div class="rank-no">' + (i + 1) + '</div>' +
           '<img class="rank-icon" src="' + (r.icon || 'app-icon.png') + '" loading="lazy">' +
           '<div class="rank-main"><div class="rank-title">' + esc(r.title) + '</div><div class="rank-sub">' + esc(r.boardLabel) + ' · 热度 ' + fmtHeat(r.hits) + '</div></div>' +
-          '<div class="rank-heat"><div class="rank-heat-val ' + d.cls + '">' + (showDelta ? d.text : '') + '</div></div></div>';
+          '<div class="rank-heat"><div class="rank-heat-val ' + cls + '">' + (showDelta ? txt : '') + '</div></div></div>';
       }).join('') + '</div>' : '';
-      list.innerHTML = moversCard() + card('涨幅榜', up, true) + card('热度榜', top, false) +
+      list.innerHTML = moversCard() + card(PERIODS[state.period] + '涨幅榜', up, true) + card('热度榜', top, false) +
         (up.length || top.length ? '' : '<div class="empty">暂无数据</div>');
       list.querySelectorAll('.rm-row').forEach(el => {
         el.addEventListener('click', () => openDetail(el.getAttribute('data-id'), '汇总'));
@@ -450,12 +525,15 @@
       items = (state.data[b] || []).filter(matchTag);
     }
     if (!items.length) { list.innerHTML = '<div class="empty">暂无数据</div>'; $('hint').textContent = ''; return; }
-    const base = baseline(maker ? 'hot' : b);
-    $('hint').textContent = (state.tag ? '筛选：' + state.tag + ' · ' : '') + (base ? ('涨幅基准 ' + fmtTime(base.ts)) : '已开始记录快照（每 20 分钟一次），攒够 1 小时就出涨幅');
     const rowKey = maker ? 'hot' : b;
+    const firstStat = items.length ? (momentum(rowKey, items[0])[state.period] || {}) : {};
+    $('hint').textContent = (state.tag ? '筛选：' + state.tag + ' · ' : '') +
+      (firstStat.baseAt
+        ? (PERIODS[state.period] + '涨幅基准 ' + fmtTime(firstStat.baseAt) + (firstStat.approx ? '（历史不足，取最早快照）' : ''))
+        : '已开始记录快照（每 20 分钟一次），攒够一个周期就出涨幅');
     // 只给当前列表里涨得最猛的 5 个加深红标记，避免“人人都是红色”
     const hotIds = new Set(
-      items.map(it => ({ id: it.id, p: momentum(rowKey, it).p1, hits: it.hits || 0 }))
+      items.map(it => ({ id: it.id, p: (momentum(rowKey, it)[state.period] || {}).p, hits: it.hits || 0 }))
         .filter(x => x.p != null && x.p > 0.5 && x.hits >= 5000)
         .sort((x, y) => y.p - x.p)
         .slice(0, 5)
@@ -493,18 +571,20 @@
     const pct = (v) => v == null ? '—' : ((v > 0 ? '+' : '') + v.toFixed(1) + '%');
     const rd = m.rankDelta == null ? '—' : (m.rankDelta > 0 ? '+' + m.rankDelta : String(m.rankDelta));
     const clsOf = (v) => v == null ? '' : (v > 0 ? 'up' : (v < 0 ? 'down' : ''));
-    const spark = sparkSVG(m.series, m.p1 != null && m.p1 > 0);
+    const spark = sparkSVG(m.series, (m[state.period] || {}).p != null && (m[state.period] || {}).p > 0);
+    const labelOf = (st, name) => (st.approx && st.baseAt) ? (name + '（自' + fmtClock(st.baseAt) + '）') : name;
     return '<div class="rank-detail-mask" id="rd-mask"></div>' +
       '<div class="rank-detail-panel" id="rd-panel">' +
       '<div class="rd-head"><img class="rd-icon" src="' + (it.icon || '') + '">' +
       '<div class="rd-info"><div class="rd-title">' + esc(it.title) + '</div>' +
       '<div class="rd-sub">' + (boardLabel || '') + (it.rank ? ' · 第 ' + it.rank + ' 名' : '') + '</div></div>' +
       '<button class="rd-close" id="rd-close">×</button></div>' +
-      (spark ? '<div class="rd-spark">' + spark + '<span>' + (m.win1 ? '近' + winLabel(m.win1) : '最近') + '热度走势</span></div>' : '') +
+      (spark ? '<div class="rd-spark">' + spark + '<span>' + ((m[state.period] && m[state.period].baseAt) ? ('近' + winLabel(m[state.period].win || 0) + '热度走势') : '最近热度走势') + '</span></div>' : '') +
       '<div class="rd-grid">' +
       '<div class="rd-cell"><span>热度</span><b>' + fmtHeat(it.hits) + '</b></div>' +
-      '<div class="rd-cell"><span>' + (m.win1 ? winLabel(m.win1) : '1 小时') + '涨幅</span><b class="' + clsOf(m.p1) + '">' + pct(m.p1) + '</b></div>' +
-      '<div class="rd-cell"><span>24 小时涨幅</span><b class="' + clsOf(m.p24) + '">' + pct(m.p24) + '</b></div>' +
+      '<div class="rd-cell"><span>' + labelOf(m.h1, '1 小时涨幅') + '</span><b class="' + clsOf(m.h1.p) + '">' + pct(m.h1.p) + '</b></div>' +
+      '<div class="rd-cell"><span>' + labelOf(m.day, '今日涨幅') + '</span><b class="' + clsOf(m.day.p) + '">' + pct(m.day.p) + '</b></div>' +
+      '<div class="rd-cell"><span>' + labelOf(m.week, '本周涨幅') + '</span><b class="' + clsOf(m.week.p) + '">' + pct(m.week.p) + '</b></div>' +
       '<div class="rd-cell"><span>名次变化</span><b class="' + clsOf(m.rankDelta) + '">' + rd + '</b></div>' +
       '<div class="rd-cell"><span>评分</span><b>' + (Number(it.score) > 0 ? it.score : '—') + '</b></div>' +
       '<div class="rd-cell"><span>评价</span><b>' + fmtHeat(it.reviews || 0) + '</b></div>' +
@@ -543,14 +623,16 @@
     const shown = hits.slice(0, 30);
     $('list').innerHTML = shown.map(h => {
       const m = momentum(h.boardKey, h);
-      const p1 = m.p1;
-      const cls = p1 == null ? 'flat' : (p1 > 0.05 ? 'up' : (p1 < -0.05 ? 'down' : 'flat'));
-      const txt = p1 == null ? '记录中'
-        : (winLabel(m.win1 || 3600000) + ' ' + (Math.abs(p1) < 0.05 ? '持平' : ((p1 > 0 ? '+' : '') + p1.toFixed(1) + '%')));
-      return '<div class="rank-row' + (p1 != null && p1 >= 8 ? ' is-hot' : '') + '"><div class="rank-no">#' + h.rank + '</div>' +
+      const st = m[state.period] || m.day;
+      const pv = st.p;
+      const cls = pv == null ? 'flat' : (pv > 0.05 ? 'up' : (pv < -0.05 ? 'down' : 'flat'));
+      const txt = pv == null ? '记录中'
+        : ((st.approx && st.baseAt ? '自' + fmtClock(st.baseAt) : PERIODS[state.period]) + ' ' +
+          (Math.abs(pv) < 0.05 ? '持平' : ((pv > 0 ? '+' : '') + pv.toFixed(1) + '%')));
+      return '<div class="rank-row' + (pv != null && pv >= 8 ? ' is-hot' : '') + '"><div class="rank-no">#' + h.rank + '</div>' +
         '<img class="rank-icon" src="' + (h.icon || '') + '" loading="lazy">' +
         '<div class="rank-main"><div class="rank-title">' + esc(h.title) + '</div><div class="rank-sub">' + esc(h.boardLabel) + ' · 评分 ' + (h.score || '—') + ' · 热度 ' + fmtHeat(h.hits) + '</div></div>' +
-        '<div class="rank-heat"><div class="rank-heat-val">' + fmtHeat(h.hits) + '</div><div class="rank-heat-delta ' + cls + '">' + txt + '</div>' + sparkSVG(m.series, p1 != null && p1 > 0) + '</div></div>';
+        '<div class="rank-heat"><div class="rank-heat-val">' + fmtHeat(h.hits) + '</div><div class="rank-heat-delta ' + cls + '">' + txt + '</div>' + sparkSVG(m.series, pv != null && pv > 0) + '</div></div>';
     }).join('');
     $('list').querySelectorAll('.rank-row').forEach((el, i) => {
       el.addEventListener('click', () => openDetail(shown[i].id, shown[i].boardLabel, shown[i].boardKey));
@@ -590,6 +672,13 @@
     $('tags').addEventListener('click', (e) => {
       const btn = e.target.closest('.rank-tag'); if (!btn) return;
       state.tag = btn.dataset.tag || '';
+      render();
+    });
+    const periods = $('periods');
+    if (periods) periods.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rank-period'); if (!btn) return;
+      state.period = btn.getAttribute('data-p') || 'day';
+      try { localStorage.setItem('rank_period', state.period); } catch (_) {}
       render();
     });
     $('refresh').addEventListener('click', () => load(true));

@@ -306,3 +306,9 @@
 .withdraw-all-btn { white-space: nowrap; flex: 0 0 auto; }
 .stat-tile-tag { white-space: nowrap; }
 .stat-tile-head { flex-wrap: nowrap; }
+
+/* ===== 榜单涨幅周期切换：1小时 / 今日 / 本周 ===== */
+.rank-periods { display: flex; gap: 6px; margin: 2px 0 8px; }
+.rank-periods[hidden] { display: none; }
+.rank-period { border: 1px solid var(--border-light); background: var(--bg-card); color: var(--text-secondary); border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.rank-period.is-active { background: var(--accent, #25b6e9); border-color: var(--accent, #25b6e9); color: #fff; }
