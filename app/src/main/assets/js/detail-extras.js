@@ -147,6 +147,7 @@
         window.electronAPI.repToken(d),
         new Promise((_, reject) => setTimeout(() => reject(new Error('REP 登录态获取超时，请重试')), 26000))
       ]);
+      if (token === 'LOGIN_REQUIRED') throw new Error('当前账号的 TapTap 登录态已失效，请重新登录 App');
       if (!token) throw new Error('REP 登录态获取失败（未取到 op-jwt-token）');
       const res = await Promise.race([
         window.electronAPI.httpGet(REP_URL, {
@@ -168,7 +169,7 @@
       const msg = e && e.message ? e.message : String(e);
       repError = 'REP 收益获取失败：' + msg;
       // 首次使用需要账号在 rep.taptap.cn 确认授权，给一个可见入口
-      const needAuth = msg.indexOf('op-jwt-token') >= 0;
+      const needAuth = msg.indexOf('op-jwt-token') >= 0 || msg.indexOf('登录态已失效') >= 0;
       card.innerHTML = '<div class="rep-empty">' + repError +
         (needAuth ? '<button class="rep-refresh" id="rep-auth">去授权</button>' : '') +
         '<button class="rep-refresh" id="rep-refresh">重试</button></div>';

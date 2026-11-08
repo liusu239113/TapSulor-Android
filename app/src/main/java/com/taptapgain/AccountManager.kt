@@ -355,13 +355,17 @@ class AccountManager(private val context: Context) {
                 // scoped to the URL's host with path "/". This is sufficient for API calls
                 // to developer.taptap.cn which is the only endpoint OkHttp talks to.
                 try {
+                    // getCookie() 不返回 Domain 属性。TapTap 的 SSO 会话（ACCOUNTS_SESS /
+                    // TAPTAP_SESSION）需要跨 accounts/developer/rep 子域生效，所以统一放宽到
+                    // .taptap.cn；否则恢复到 WebView 后只有当前 host 能读到，REP 会掉登录。
+                    val cookieDomain = if (url.host.endsWith("taptap.cn")) "taptap.cn" else url.host
                     val c = Cookie.Builder()
                         .name(name)
                         .value(value)
-                        .domain(url.host)
+                        .domain(cookieDomain)
                         .path("/")
                         .build()
-                    val key = "$name|${url.host}|/"
+                    val key = "$name|$cookieDomain|/"
                     // Last write wins; the most specific URL's cookie takes precedence is fine here
                     collected[key] = c
                 } catch (_: Exception) { /* skip invalid */ }

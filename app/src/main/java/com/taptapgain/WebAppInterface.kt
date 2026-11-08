@@ -17,6 +17,8 @@ class WebAppInterface(
     private val updateChecker: UpdateChecker
 ) {
     private val gson = Gson()
+    private val DESKTOP_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val capturedApis = mutableListOf<Map<String, Any?>>()
 
@@ -198,35 +200,30 @@ class WebAppInterface(
     @JavascriptInterface fun repToken(id: Int, developerId: String) {
         activity.runOnUiThread {
             val handler = android.os.Handler(android.os.Looper.getMainLooper())
-            // 30 分钟内复用上次拿到的令牌，避免每次点 REP 都等一轮 SSO
+            val owner = runCatching { accountManager.getCurrentAccountId() }.getOrDefault("")
             val prefs = activity.getSharedPreferences("taptap_prefs", Context.MODE_PRIVATE)
-            val cacheKey = "rep_token_$developerId"
+            val cacheKey = "rep_token_$owner"
             val cached = prefs.getString(cacheKey, null)
             val cachedAt = prefs.getLong(cacheKey + "_at", 0L)
-            if (!cached.isNullOrEmpty() && System.currentTimeMillis() - cachedAt < 30L * 60L * 1000L) {
+            // 桌面端同款：令牌按账号缓存 4 小时
+            if (!cached.isNullOrEmpty() && System.currentTimeMillis() - cachedAt < 4L * 60L * 60L * 1000L) {
                 webView.evaluateJavascript("window.__pendingRepToken($id, ${jsString(cached)})", null)
                 return@runOnUiThread
             }
             val wv = WebView(activity)
             wv.settings.javaScriptEnabled = true
             wv.settings.domStorageEnabled = true
-            wv.settings.userAgentString =
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            wv.settings.userAgentString = DESKTOP_UA
             val cm = android.webkit.CookieManager.getInstance()
             cm.setAcceptCookie(true)
             cm.setAcceptThirdPartyCookies(wv, true)
-            // 同步当前账号登录 Cookie，否则后台页面拿不到 REP 令牌
             try {
-                val accId = accountManager.getCurrentAccountId()
                 listOf("https://developer.taptap.cn/", "https://accounts.taptap.cn/", "https://rep.taptap.cn/").forEach { u ->
                     val url = u.toHttpUrlOrNull() ?: return@forEach
-                    accountManager.getCookiesForUrl(accId, url).forEach { c -> cm.setCookie(u, c.name + "=" + c.value) }
+                    accountManager.getCookiesForUrl(owner, url).forEach { c -> cm.setCookie(u, c.name + "=" + c.value) }
                 }
                 cm.flush()
-            } catch (e: Exception) { }
-            // 关键：WebView 不 attach 时 View.postDelayed 的队列永远不会执行，
-            // 会导致轮询和超时都不跑、JS Promise 永久挂起（REP 一直“同步中”）。
-            // 所以用主线程 Handler 调度，并把 WebView 以 1x1 不可见挂到窗口上，保证页面/JS 正常运行。
+            } catch (_: Exception) { }
             val root = activity.window?.decorView as? android.view.ViewGroup
             if (root != null) {
                 wv.visibility = android.view.View.INVISIBLE
@@ -245,11 +242,9 @@ class WebAppInterface(
             fun finish(token: String) {
                 if (settled) return
                 settled = true
-                if (token.isNotEmpty()) {
-                    try {
-                        prefs.edit().putString(cacheKey, token)
-                            .putLong(cacheKey + "_at", System.currentTimeMillis()).apply()
-                    } catch (_: Exception) { }
+                if (token.isNotEmpty() && token != "LOGIN_REQUIRED") {
+                    prefs.edit().putString(cacheKey, token)
+                        .putLong(cacheKey + "_at", System.currentTimeMillis()).apply()
                 }
                 handler.post {
                     webView.evaluateJavascript("window.__pendingRepToken($id, ${jsString(token)})", null)
@@ -257,18 +252,62 @@ class WebAppInterface(
                 }
             }
 
+            // 桌面端同款：停在授权页时自动点「确认登录」
+            fun clickAuth() {
+                wv.evaluateJavascript(
+                    "(function(){var els=[].slice.call(document.querySelectorAll('button,a,[role=button],span,div'));" +
+                    "var b=els.find(function(e){var t=(e.innerText||'').trim();" +
+                    "return t==='确认登录'||t==='授权'||t==='同意'||t==='允许';});" +
+                    "if(b){b.click();return 'clicked'}return 'no'})()",
+                    null
+                )
+            }
+
             fun poll() {
                 if (settled) return
                 wv.evaluateJavascript(
-                    "(function(){try{return localStorage.getItem('op-jwt-token')||''}catch(e){return ''}})()"
-                ) { v ->
-                    val token = (v ?: "").trim().trim('"')
-                    if (token.isNotEmpty()) {
+                    "(function(){try{return JSON.stringify({token:localStorage.getItem('op-jwt-token')||''," +
+                    "owner:localStorage.getItem('op-jwt-owner')||'',url:location.href," +
+                    "text:(document.body?document.body.innerText:'').slice(0,200)})}catch(e){return ''}})()"
+                ) { raw ->
+                    val packed = (raw ?: "").trim()
+                    var token = ""
+                    var tokenOwner = ""
+                    var pageUrl = ""
+                    var pageText = ""
+                    try {
+                        val inner = if (packed.startsWith("\"") && packed.endsWith("\"")) {
+                            gson.fromJson(packed, String::class.java)
+                        } else packed
+                        val o = com.google.gson.JsonParser.parseString(inner).asJsonObject
+                        token = o.get("token")?.asString ?: ""
+                        tokenOwner = o.get("owner")?.asString ?: ""
+                        pageUrl = o.get("url")?.asString ?: ""
+                        pageText = o.get("text")?.asString ?: ""
+                    } catch (_: Exception) { }
+
+                    if (token.isNotEmpty() && (tokenOwner.isEmpty() || tokenOwner == owner)) {
+                        if (tokenOwner.isEmpty()) {
+                            wv.evaluateJavascript(
+                                "(function(){try{localStorage.setItem('op-jwt-owner'," + jsString(owner) + ")}catch(e){}})()",
+                                null
+                            )
+                        }
                         finish(token)
-                    } else if (tries++ < 30) {
-                        handler.postDelayed({ poll() }, 500)
+                    } else if (token.isNotEmpty()) {
+                        // 上一个账号的令牌，清掉重走当前账号 SSO
+                        wv.evaluateJavascript(
+                            "(function(){try{localStorage.removeItem('op-jwt-token');localStorage.removeItem('op-jwt-owner')}catch(e){}})()",
+                            null
+                        )
+                        if (tries++ < 80) handler.postDelayed({ poll() }, 500) else finish("")
+                    } else if (pageUrl.contains("accounts.taptap.cn/login")) {
+                        finish("LOGIN_REQUIRED")
                     } else {
-                        finish("")
+                        if (pageUrl.contains("accounts.taptap.cn/authorize") ||
+                            pageText.contains("确认登录") || pageText.contains("授权登录") || pageText.contains("用户授权")
+                        ) clickAuth()
+                        if (tries++ < 80) handler.postDelayed({ poll() }, 500) else finish("")
                     }
                 }
             }
@@ -279,8 +318,7 @@ class WebAppInterface(
                 }
             }
             wv.loadUrl("https://rep.taptap.cn/$developerId/")
-            // 兜底超时
-            handler.postDelayed({ if (!settled) finish("") }, 20000L)
+            handler.postDelayed({ if (!settled) finish("") }, 42000L)
         }
     }
 
@@ -354,7 +392,7 @@ class WebAppInterface(
                 wv.evaluateJavascript(js) { v ->
                     // evaluateJavascript 返回的是被 JSON 编码过的字符串
                     val raw = (v ?: "").trim()
-                    val unescaped = if (raw.startsWith(""") && raw.endsWith(""")) {
+                    val unescaped = if (raw.startsWith("\"") && raw.endsWith("\"")) {
                         try { com.google.gson.JsonParser().parse(raw).asString } catch (_: Exception) { raw }
                     } else raw
                     done(unescaped)
