@@ -135,14 +135,21 @@
       const appId = currentAppId();
       if (!d || !appId) throw new Error('缺少厂商或游戏 ID');
       // 先在后台 WebView 取 REP 令牌，再用 OkHttp 带鉴权头请求（接口已验证可用）
-      const token = await window.electronAPI.repToken(d);
+      // 加超时兜底：原生若卡住，不能让面板永远停在“同步中”
+      const token = await Promise.race([
+        window.electronAPI.repToken(d),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('REP 登录态获取超时，请重试')), 26000))
+      ]);
       if (!token) throw new Error('REP 登录态获取失败（未取到 op-jwt-token）');
-      const res = await window.electronAPI.httpGet(REP_URL, {
-        Authorization: token,
-        'x-app-id': String(appId),
-        'x-developer-id': String(d),
-        Referer: 'https://rep.taptap.cn/'
-      });
+      const res = await Promise.race([
+        window.electronAPI.httpGet(REP_URL, {
+          Authorization: token,
+          'x-app-id': String(appId),
+          'x-developer-id': String(d),
+          Referer: 'https://rep.taptap.cn/'
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('REP 接口请求超时，请重试')), 16000))
+      ]);
       if (!res || !res.ok) {
         let msg = 'REP 接口请求失败' + (res && res.status ? ' (' + res.status + ')' : '');
         if (res && res.body && res.body.indexOf('非法厂商Id') >= 0) msg = '当前账号没有这个游戏的 REP 数据';

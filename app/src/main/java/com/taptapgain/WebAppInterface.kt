@@ -189,6 +189,16 @@ class WebAppInterface(
      */
     @JavascriptInterface fun repToken(id: Int, developerId: String) {
         activity.runOnUiThread {
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            // 30 分钟内复用上次拿到的令牌，避免每次点 REP 都等一轮 SSO
+            val prefs = activity.getSharedPreferences("taptap_prefs", Context.MODE_PRIVATE)
+            val cacheKey = "rep_token_$developerId"
+            val cached = prefs.getString(cacheKey, null)
+            val cachedAt = prefs.getLong(cacheKey + "_at", 0L)
+            if (!cached.isNullOrEmpty() && System.currentTimeMillis() - cachedAt < 30L * 60L * 1000L) {
+                webView.evaluateJavascript("window.__pendingRepToken($id, ${jsString(cached)})", null)
+                return@runOnUiThread
+            }
             val wv = WebView(activity)
             wv.settings.javaScriptEnabled = true
             wv.settings.domStorageEnabled = true
@@ -205,14 +215,36 @@ class WebAppInterface(
                 }
                 cm.flush()
             } catch (e: Exception) { }
+            // 关键：WebView 不 attach 时 View.postDelayed 的队列永远不会执行，
+            // 会导致轮询和超时都不跑、JS Promise 永久挂起（REP 一直“同步中”）。
+            // 所以用主线程 Handler 调度，并把 WebView 以 1x1 不可见挂到窗口上，保证页面/JS 正常运行。
+            val root = activity.window?.decorView as? android.view.ViewGroup
+            if (root != null) {
+                wv.visibility = android.view.View.INVISIBLE
+                root.addView(wv, android.view.ViewGroup.LayoutParams(1, 1))
+            }
             var settled = false
             var tries = 0
+
+            fun cleanup() {
+                try {
+                    (wv.parent as? android.view.ViewGroup)?.removeView(wv)
+                    wv.destroy()
+                } catch (_: Exception) { }
+            }
 
             fun finish(token: String) {
                 if (settled) return
                 settled = true
-                webView.post {
+                if (token.isNotEmpty()) {
+                    try {
+                        prefs.edit().putString(cacheKey, token)
+                            .putLong(cacheKey + "_at", System.currentTimeMillis()).apply()
+                    } catch (_: Exception) { }
+                }
+                handler.post {
                     webView.evaluateJavascript("window.__pendingRepToken($id, ${jsString(token)})", null)
+                    handler.postDelayed({ cleanup() }, 300)
                 }
             }
 
@@ -225,7 +257,7 @@ class WebAppInterface(
                     if (token.isNotEmpty()) {
                         finish(token)
                     } else if (tries++ < 30) {
-                        wv.postDelayed({ poll() }, 500)
+                        handler.postDelayed({ poll() }, 500)
                     } else {
                         finish("")
                     }
@@ -234,12 +266,12 @@ class WebAppInterface(
 
             wv.webViewClient = object : android.webkit.WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
-                    wv.postDelayed({ poll() }, 800)
+                    handler.postDelayed({ poll() }, 800)
                 }
             }
             wv.loadUrl("https://rep.taptap.cn/$developerId/")
             // 兜底超时
-            wv.postDelayed({ if (!settled) finish("") }, 20000L)
+            handler.postDelayed({ if (!settled) finish("") }, 20000L)
         }
     }
 
@@ -280,11 +312,27 @@ class WebAppInterface(
                 }
                 cm.flush()
             } catch (e: Exception) { }
+            // 同 repToken：未 attach 的 WebView 上 View.postDelayed 不会执行
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            val root = activity.window?.decorView as? android.view.ViewGroup
+            if (root != null) {
+                wv.visibility = android.view.View.INVISIBLE
+                root.addView(wv, android.view.ViewGroup.LayoutParams(1, 1))
+            }
             var settled = false
+            fun cleanup() {
+                try {
+                    (wv.parent as? android.view.ViewGroup)?.removeView(wv)
+                    wv.destroy()
+                } catch (_: Exception) { }
+            }
             fun done(payload: String) {
                 if (settled) return
                 settled = true
-                webView.post { webView.evaluateJavascript("window.__pendingRepRevenue($id, ${jsString(payload)})", null) }
+                handler.post {
+                    webView.evaluateJavascript("window.__pendingRepRevenue($id, ${jsString(payload)})", null)
+                    handler.postDelayed({ cleanup() }, 300)
+                }
             }
             fun run() {
                 val js = "(async function(){try{" +
@@ -311,15 +359,15 @@ class WebAppInterface(
                         wv.evaluateJavascript("(function(){try{return localStorage.getItem('op-jwt-token')||''}catch(e){return ''}})()") { t ->
                             val token = (t ?: "").trim().trim('"')
                             if (token.isNotEmpty()) run()
-                            else if (tries++ < 24) wv.postDelayed({ waitToken() }, 500)
+                            else if (tries++ < 24) handler.postDelayed({ waitToken() }, 500)
                             else done("{\"ok\":false,\"error\":\"NO_TOKEN\"}")
                         }
                     }
-                    wv.postDelayed({ waitToken() }, 600)
+                    handler.postDelayed({ waitToken() }, 600)
                 }
             }
             wv.loadUrl("https://rep.taptap.cn/$developerId/")
-            wv.postDelayed({ if (!settled) done("{\"ok\":false,\"error\":\"TIMEOUT\"}") }, 20000L)
+            handler.postDelayed({ if (!settled) done("{\"ok\":false,\"error\":\"TIMEOUT\"}") }, 20000L)
         }
     }
 

@@ -300,3 +300,9 @@
 /* 回顶/回底按钮：提高可见度（Android WebView 上 0.55 透明度太不显眼） */
 .rank-scroll-btn.is-show { opacity: .92 !important; border-color: var(--accent, #25b6e9) !important; color: var(--accent, #25b6e9) !important; background: var(--bg-card) !important; }
 .rank-scroll-btn.is-show:active { opacity: 1 !important; transform: scale(.94); }
+
+/* 按钮文字禁止竖排（真机窄屏实测） */
+.mode-switch button { white-space: nowrap; }
+.withdraw-all-btn { white-space: nowrap; flex: 0 0 auto; }
+.stat-tile-tag { white-space: nowrap; }
+.stat-tile-head { flex-wrap: nowrap; }
