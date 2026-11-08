@@ -275,6 +275,18 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Use registerForActivityResult")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        // REP 授权返回：页面自动重试拉取 REP 收益
+        if (requestCode == RepAuthActivity.REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                webView.postDelayed({
+                    webView.evaluateJavascript(
+                        "if(window.__onRepAuth)window.__onRepAuth();",
+                        null
+                    )
+                }, 300)
+            }
+            return
+        }
         // 登录回调
         if (requestCode == LoginActivity.REQUEST_CODE_LOGIN && resultCode == RESULT_OK) {
             val developerId = data?.getStringExtra(LoginActivity.EXTRA_DEVELOPER_ID)

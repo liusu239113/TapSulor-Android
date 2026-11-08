@@ -8,6 +8,13 @@
   const REP_URL = 'https://tap-op.tapapis.cn/rep/be/v1/dashboard/revenue';
   let repData = null, repLoading = false, repError = null, repDev = null;
 
+  // 从可见授权页返回后自动重试
+  window.__onRepAuth = function () {
+    repError = null;
+    repData = null;
+    loadRep();
+  };
+
   const $ = (id) => document.getElementById(id);
   const fmt = (n) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -158,8 +165,27 @@
       repData = JSON.parse(res.body);
       render(repData);
     } catch (e) {
-      repError = 'REP 收益获取失败：' + (e && e.message ? e.message : e);
-      card.innerHTML = '<div class="rep-empty">' + repError + '<button class="rep-refresh" id="rep-refresh">重试</button></div>';
+      const msg = e && e.message ? e.message : String(e);
+      repError = 'REP 收益获取失败：' + msg;
+      // 首次使用需要账号在 rep.taptap.cn 确认授权，给一个可见入口
+      const needAuth = msg.indexOf('op-jwt-token') >= 0;
+      card.innerHTML = '<div class="rep-empty">' + repError +
+        (needAuth ? '<button class="rep-refresh" id="rep-auth">去授权</button>' : '') +
+        '<button class="rep-refresh" id="rep-refresh">重试</button></div>';
+      const authBtn = card.querySelector('#rep-auth');
+      if (authBtn) authBtn.addEventListener('click', async () => {
+        try {
+          const d2 = await devId();
+          if (window.electronAPI && window.electronAPI.openRepAuth) {
+            window.electronAPI.openRepAuth(d2);
+          } else {
+            throw new Error('当前版本不支持 REP 授权页');
+          }
+        } catch (err) {
+          repError = 'REP 授权页打开失败：' + (err && err.message ? err.message : err);
+          card.innerHTML = '<div class="rep-empty">' + repError + '</div>';
+        }
+      });
       const b = card.querySelector('#rep-refresh');
       if (b) b.addEventListener('click', () => { repError = null; loadRep(); });
     } finally {

@@ -105,6 +105,14 @@ class WebAppInterface(
         activity.startActivityForResult(intent, LoginActivity.REQUEST_CODE_LOGIN)
     }
 
+    /** 打开可见的 REP 授权页（首次需要账号确认授权，隐藏 WebView 点不了按钮） */
+    @JavascriptInterface fun openRepAuth(developerId: String?) {
+        val dev = (developerId ?: "").trim().ifEmpty {
+            accountManager.getActiveDeveloperId() ?: accountManager.getDeveloperId() ?: ""
+        }
+        if (dev.isNotEmpty()) RepAuthActivity.start(activity, dev)
+    }
+
     @JavascriptInterface fun getAccounts(): String = gson.toJson(accountManager.getAccountsPayload())
 
     @JavascriptInterface fun switchAccount(id: String): Boolean {
