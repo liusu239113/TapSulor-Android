@@ -177,13 +177,21 @@ class UpdateChecker(private val activity: Activity) {
         dialog.setCanceledOnTouchOutside(!info.forceUpdate)
 
         // 设置窗口宽度（屏幕宽度的 86%，两侧留白）、居中
+        val dm = activity.resources.displayMetrics
         val window = dialog.window
         window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         val lp = window?.attributes
-        lp?.width = (activity.resources.displayMetrics.widthPixels * 0.86f).toInt()
+        lp?.width = (dm.widthPixels * 0.86f).toInt()
         lp?.height = ViewGroup.LayoutParams.WRAP_CONTENT
         lp?.gravity = Gravity.CENTER
         window?.attributes = lp
+
+        // 小屏适配：说明区按可用高度限高并滚动，保证"稍后/立即更新"始终可见
+        val scroll = dialog.findViewById<android.widget.ScrollView>(R.id.notesScroll)
+        val maxDialogPx = (dm.heightPixels * 0.78f).toInt()
+        val fixedPx = (250 * dm.density).toInt()   // 标题+版本+时间+按钮+内边距的近似固定高度
+        val notesHeight = (maxDialogPx - fixedPx).coerceAtLeast((90 * dm.density).toInt())
+        scroll?.layoutParams = scroll?.layoutParams?.apply { height = notesHeight }
 
         // 应用主题色（通过代码动态着色，覆盖 XML 硬编码色）
         applyDialogTheme(dialog, isDark, accent)
