@@ -280,9 +280,8 @@
   const matchTag = (it) => !state.tag || (it.tags || []).includes(state.tag);
 
   function syncPeriodUI() {
-    const box = $('periods');
-    if (!box) return;
-    box.querySelectorAll('.rank-period').forEach(b => b.classList.toggle('is-active', b.getAttribute('data-p') === state.period));
+    const sel = $('period-select');
+    if (sel) sel.value = state.period;
   }
 
   function rowHTML(it, key, idx, isHot) {
@@ -370,6 +369,7 @@
       maker: items.filter(x => x.maker).length
     };
     count.other = count.all - count.maker;
+    $('updated').textContent = '今日游戏 · 共 ' + count.all + ' 款';
 
     const matchType = (x) => state.calType === 'all' ? true
       : state.calType === 'launch' ? x.type === '首发'
@@ -466,8 +466,6 @@
     const list = $('list');
     const b = state.board;
 
-    const periodsBox = $('periods');
-    if (periodsBox) periodsBox.hidden = (b === 'today');
     syncPeriodUI();
     if (b === 'today') { renderToday(list); return; }
 
@@ -688,10 +686,9 @@
       state.tag = btn.dataset.tag || '';
       render();
     });
-    const periods = $('periods');
-    if (periods) periods.addEventListener('click', (e) => {
-      const btn = e.target.closest('.rank-period'); if (!btn) return;
-      state.period = btn.getAttribute('data-p') || 'day';
+    const periodSel = $('period-select');
+    if (periodSel) periodSel.addEventListener('change', () => {
+      state.period = periodSel.value || 'day';
       try { localStorage.setItem('rank_period', state.period); } catch (_) {}
       render();
     });
