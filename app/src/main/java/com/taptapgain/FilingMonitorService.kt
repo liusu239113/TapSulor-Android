@@ -33,6 +33,7 @@ class FilingMonitorService : Service() {
         const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         const val FILING_BASE = "https://ark.yanyususu.online/tapsulor-filing"
         const val API = "https://developer.taptap.cn"
+        const val COOKIE_CAP = 6500
 
         private val running = AtomicBoolean(false)
 
@@ -117,39 +118,51 @@ class FilingMonitorService : Service() {
         }
     }
 
+    private fun isLegalCookie(name: String, value: String): Boolean {
+        // Cookie 头里出现非 ASCII / 引号 / 分号 / 逗号 / 空格 / 反斜杠，Tomcat 会直接 400
+        fun asciiToken(s: String): Boolean {
+            for (ch in s) {
+                val code = ch.code
+                if (code < 0x21 || code > 0x7e) return false
+                if (ch == '"' || ch == ';' || ch == ',' || ch == '\\' || ch == ' ') return false
+            }
+            return true
+        }
+        return asciiToken(name) && asciiToken(value)
+    }
+
+    private fun domainMatches(host: String, domain: String?): Boolean {
+        val d = (domain ?: "").removePrefix(".").lowercase()
+        return d.isNotEmpty() && (host == d || host.endsWith(".$d"))
+    }
+
     private fun cookieHeaderFor(url: String): String {
         val host = try { java.net.URI(url).host ?: "" } catch (_: Exception) { "" }
         val all = accountManager.exportCookiesForServer()
-        // 只发属于该域名的 Cookie + 剔除非法字符（Tomcat 对非法 Cookie 头直接 400）+ 控制总长
-        fun legal(c: Map<String, String>): Boolean =
-            ((c["name"] ?: "") + (c["value"] ?: "")).all { it.code in 0x21..0x7e } &&
-                !(c["value"] ?: "").any { it == '"' || it == '\' || it == ';' || it == ',' || it == ' ' }
-        val matched = all.filter { legal(it) }.filter { c ->
-            val d = (c["domain"] ?: "").removePrefix(".").lowercase()
-            d.isNotEmpty() && (host == d || host.endsWith(".$d"))
-        }
-        val picked = matched.ifEmpty { all.filter { legal(it) } }
+        val ok = all.filter { isLegalCookie(it["name"] ?: "", it["value"] ?: "") }
+        val matched = ok.filter { domainMatches(host, it["domain"]) }
+        val picked = matched.ifEmpty { ok }.toMutableList()
         var header = picked.joinToString("; ") { "${it["name"]}=${it["value"]}" }
-        while (header.length > 6500 && picked.isNotEmpty()) {
+        while (header.length > COOKIE_CAP && picked.isNotEmpty()) {
             picked.removeAt(picked.size - 1)
             header = picked.joinToString("; ") { "${it["name"]}=${it["value"]}" }
         }
         return header
     }
 
-    private fun statusOf(appId: String, dev: String, ck: String): String? {
-        val q = "?app_id=$appId&developer_id=$dev"
-        // 产品口径：广告已开通即视为备案通过
+    private fun statusOf(appId: String, dev: String): String? {
+        val adUrl = "$API/api/mini-app/v1/ad/info?app_id=$appId&developer_id=$dev"
         runCatching {
-            val (ac, ab) = httpGet("$API/api/mini-app/v1/ad/info$q", cookieHeaderFor("$API/api/mini-app/v1/ad/info$q"))
+            val (ac, ab) = httpGet(adUrl, cookieHeaderFor(adUrl))
             if (ac == 401 || ac == 403) return "UNAUTHORIZED"
             if (ac == 200) {
                 val ad = JSONObject(ab).optJSONObject("data") ?: JSONObject()
                 if (ad.optBoolean("is_enabled")) return "AD_ENABLED"
             }
         }
+        val fUrl = "$API/api/mini-app/v2/filing/info?app_id=$appId&developer_id=$dev"
         runCatching {
-            val (fc, fb) = httpGet("$API/api/mini-app/v2/filing/info$q", cookieHeaderFor("$API/api/mini-app/v2/filing/info$q"))
+            val (fc, fb) = httpGet(fUrl, cookieHeaderFor(fUrl))
             if (fc == 401 || fc == 403) return "UNAUTHORIZED"
             if (fc == 200) {
                 val d = JSONObject(fb).optJSONObject("data") ?: JSONObject()
@@ -170,8 +183,8 @@ class FilingMonitorService : Service() {
         val token = p.getString("filing_token_$dev", null) ?: return
         if (p.getBoolean("filing_enabled_$dev", false) != true) return
 
-        // 游戏列表
-        val (lc, lb) = httpGet("$API/api/app/v2/list?developer_id=$dev&page=1&pagesize=100", cookieHeaderFor("$API/api/app/v2/list"))
+        val listUrl = "$API/api/app/v2/list?developer_id=$dev&page=1&pagesize=100"
+        val (lc, lb) = httpGet(listUrl, cookieHeaderFor(listUrl))
         if (lc != 200) return
         val list = JSONObject(lb).optJSONObject("data")?.optJSONArray("list") ?: return
 
@@ -181,11 +194,12 @@ class FilingMonitorService : Service() {
             val app = list.optJSONObject(i) ?: continue
             val appId = app.optString("id")
             if (appId.isEmpty()) continue
-            val st = statusOf(appId, dev, ck)
-            when (st) {
+            when (val st = statusOf(appId, dev)) {
                 "UNAUTHORIZED" -> return // 登录态失效：不刷新上报时间，交给服务器兜底
                 null -> Unit
-                else -> statuses.put(JSONObject().put("app_id", appId).put("title", app.optString("title")).put("status", st))
+                else -> statuses.put(
+                    JSONObject().put("app_id", appId).put("title", app.optString("title")).put("status", st)
+                )
             }
             Thread.sleep(150)
         }
