@@ -375,9 +375,20 @@
     var d = await dev();
     if (!d) { b.textContent = '备案 —'; b.className = 'filing-inline op-badge muted'; return; }
     try {
-      var r = await window.electronAPI.fetch(
-        'https://developer.taptap.cn/api/mini-app/v2/filing/info?app_id=' + encodeURIComponent(appId) +
-        '&developer_id=' + encodeURIComponent(d));
+      var base = 'https://developer.taptap.cn/api/mini-app/';
+      var qs = '?app_id=' + encodeURIComponent(appId) + '&developer_id=' + encodeURIComponent(d);
+      // 产品口径：广告已开通即视为备案通过
+      var ar = await window.electronAPI.fetch(base + 'v1/ad/info' + qs);
+      if (ar && ar.ok) {
+        var aj = JSON.parse(ar.body);
+        if (aj && aj.data && aj.data.is_enabled === true) {
+          b.textContent = '广告已开通';
+          b.className = 'filing-inline op-badge ok';
+          b.title = '广告已开通';
+          return;
+        }
+      }
+      var r = await window.electronAPI.fetch(base + 'v2/filing/info' + qs);
       if (!r || !r.ok) throw new Error('HTTP');
       var j = JSON.parse(r.body);
       var stRaw = j && j.data ? Number(j.data.status) : 0;
