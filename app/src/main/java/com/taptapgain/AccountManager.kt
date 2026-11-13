@@ -10,6 +10,7 @@ import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import okhttp3.Cookie
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.ConcurrentHashMap
 
