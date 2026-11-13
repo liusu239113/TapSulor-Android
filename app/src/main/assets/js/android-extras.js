@@ -376,11 +376,13 @@
     if (!d) { b.textContent = '备案 —'; b.className = 'filing-inline op-badge muted'; return; }
     try {
       var r = await window.electronAPI.fetch(
-        'https://developer.taptap.cn/api/mini-app/v1/ad/info?app_id=' + encodeURIComponent(appId) +
+        'https://developer.taptap.cn/api/mini-app/v2/filing/info?app_id=' + encodeURIComponent(appId) +
         '&developer_id=' + encodeURIComponent(d));
       if (!r || !r.ok) throw new Error('HTTP');
       var j = JSON.parse(r.body);
-      var st = (j && j.data && j.data.game_filing_status) || '';
+      var raw = j && j.data ? (j.data.status != null ? j.data.status : j.data.filing_status) : null;
+      var num = Number(raw);
+      var st = num === 1 ? 'PENDING' : (num === 2 ? 'PASSED' : (num === 3 ? 'REJECTED' : ''));
       var m = LABELS[st] || { t: '未备案', c: 'muted' };
       b.textContent = m.t;
       b.className = 'filing-inline op-badge ' + m.c;
