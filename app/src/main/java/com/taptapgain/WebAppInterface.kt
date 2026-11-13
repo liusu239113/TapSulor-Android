@@ -448,18 +448,31 @@ class WebAppInterface(
         accountManager.getActiveDeveloperId() ?: accountManager.getDeveloperId() ?: ""
 
     private fun serverPost(path: String, payload: String, token: String? = null): String {
-        return try {
-            val body = payload.toRequestBody("application/json".toMediaType())
-            val b = Request.Builder()
-                .url(FILING_BASE + path)
-                .post(body)
-                .header("User-Agent", DESKTOP_UA)
-                .header("Accept", "application/json")
-            if (!token.isNullOrBlank()) b.header("X-Device-Token", token)
-            apiClient.httpClient.newCall(b.build()).execute().use { it.body?.string() ?: "" }
-        } catch (e: Exception) {
-            gson.toJson(mapOf("ok" to false, "error" to (e.message ?: "network_error")))
+        // 网络瞬断（connection closed/超时）自动重试一次；错误信息给人话
+        var lastErr: String? = null
+        repeat(2) { attempt ->
+            try {
+                val body = payload.toRequestBody("application/json".toMediaType())
+                val b = Request.Builder()
+                    .url(FILING_BASE + path)
+                    .post(body)
+                    .header("User-Agent", DESKTOP_UA)
+                    .header("Accept", "application/json")
+                if (!token.isNullOrBlank()) b.header("X-Device-Token", token)
+                apiClient.httpClient.newCall(b.build()).execute().use { return it.body?.string() ?: "" }
+            } catch (e: Exception) {
+                lastErr = e.message
+                if (attempt == 0) Thread.sleep(1500)
+            }
         }
+        val raw = lastErr ?: "network_error"
+        val msg = when {
+            raw.contains("timeout", true) -> "网络超时，请重试"
+            raw.contains("closed", true) || raw.contains("reset", true) -> "网络连接中断，请重试"
+            raw.contains("Unable to resolve", true) || raw.contains("connect", true) -> "网络不可用，请检查网络后重试"
+            else -> "网络异常，请重试"
+        }
+        return gson.toJson(mapOf("ok" to false, "error" to msg))
     }
 
     private fun resolveFiling(id: Int, payload: String) {
