@@ -338,3 +338,13 @@
 .game-card .game-sub { flex-wrap: wrap !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; row-gap: 4px; }
 .game-card .game-sub > * { flex: 0 0 auto; }
 .filing-inline { flex: 0 0 auto !important; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
+
+/* 窄屏（≈360px）压缩徽标与金额标签，保证同一行；更窄才允许换行 */
+@media (max-width: 380px) {
+  .game-card .game-sub { flex-wrap: nowrap !important; gap: 5px; }
+  .game-card .game-total-pill { font-size: 10px; padding: 1px 6px; }
+  .game-card .filing-inline { font-size: 9px; padding: 1px 5px; margin-left: 0; }
+}
+@media (max-width: 340px) {
+  .game-card .game-sub { flex-wrap: wrap !important; }
+}

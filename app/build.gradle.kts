@@ -28,8 +28,8 @@ android {
         applicationId = "com.taptapgain"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.0.7"
+        versionCode = 15
+        versionName = "1.0.8"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
