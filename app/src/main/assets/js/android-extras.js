@@ -275,3 +275,68 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(hook, 600));
   else setTimeout(hook, 600);
 })();
+
+/* ==================== 备案提醒设置 ==================== */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function init() {
+    var box = $('filing-block');
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = '1';
+    var email = $('filing-email'), code = $('filing-code'), send = $('filing-send-code');
+    var enable = $('filing-enable'), test = $('filing-test'), disable = $('filing-disable');
+    var statusEl = $('filing-status-text'), tip = $('filing-tip');
+    function setTip(t) { if (tip) tip.textContent = t; }
+    function state() { try { return window.electronAPI.filingState ? window.electronAPI.filingState() : {}; } catch (e) { return {}; } }
+    function paint() {
+      var st = state() || {};
+      if (st.email && !email.value) email.value = st.email;
+      if (st.enabled) {
+        statusEl.textContent = '已开启 · ' + (st.email || '');
+        statusEl.className = 'filing-status ok';
+        test.hidden = false; disable.hidden = false; enable.textContent = '重新绑定';
+      } else {
+        statusEl.textContent = '未开启';
+        statusEl.className = 'filing-status';
+        test.hidden = true; disable.hidden = true; enable.textContent = '开启提醒';
+      }
+    }
+    if (!window.electronAPI || !window.electronAPI.filingRegister) {
+      statusEl.textContent = '当前版本不支持';
+      return;
+    }
+    send.addEventListener('click', async function () {
+      var e = (email.value || '').trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTip('请先填写正确的收件邮箱'); return; }
+      send.disabled = true; setTip('正在发送验证码…');
+      try {
+        var r = await window.electronAPI.filingSendCode(e);
+        if (r && r.ok) { setTip('验证码已发送到 ' + e + '，请查收邮箱（10 分钟内有效）'); code.focus(); }
+        else setTip('发送失败：' + ((r && r.error) || '请稍后再试'));
+      } catch (err) { setTip('发送失败：' + err); }
+      send.disabled = false;
+    });
+    enable.addEventListener('click', async function () {
+      var e = (email.value || '').trim(), c = (code.value || '').trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTip('请先填写正确的收件邮箱'); return; }
+      if (!/^\d{6}$/.test(c)) { setTip('请填写 6 位验证码'); return; }
+      enable.disabled = true; setTip('正在绑定当前账号…');
+      try {
+        var r = await window.electronAPI.filingRegister(e, c);
+        if (r && r.ok) { setTip('已开启，正在监控 ' + (r.apps || 0) + ' 个游戏'); paint(); }
+        else setTip('绑定失败：' + ((r && r.error) || '请检查验证码'));
+      } catch (err) { setTip('绑定失败：' + err); }
+      enable.disabled = false;
+    });
+    test.addEventListener('click', async function () {
+      setTip('正在发送测试邮件…');
+      try { var r = await window.electronAPI.filingTestMail(); setTip(r && r.ok ? '测试邮件已发送，请查收' : '发送失败'); } catch (e) { setTip('发送失败'); }
+    });
+    disable.addEventListener('click', async function () {
+      try { await window.electronAPI.filingDisable(); setTip('已关闭备案提醒'); paint(); } catch (e) {}
+    });
+    paint();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 800));
+  else setTimeout(init, 800);
+})();

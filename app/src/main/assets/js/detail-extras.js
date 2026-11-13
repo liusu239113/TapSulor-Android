@@ -354,6 +354,59 @@
       else if (n > 40) clearInterval(t);
     }, 500);
   }
+
+  // ==================== 备案状态徽标（累计收益右侧） ====================
+  (function () {
+    var LABELS = {
+      PENDING: { t: '备案审核中', c: 'credit' },
+      PASSED: { t: '备案已通过', c: 'ok' },
+      REJECTED: { t: '备案已驳回', c: 'warn' }
+    };
+    var timer = null;
+    function ensureBadge() {
+      var tile = document.getElementById('detail-grand-mini');
+      if (!tile) return null;
+      var b = document.getElementById('filing-badge');
+      if (!b) {
+        b = document.createElement('span');
+        b.id = 'filing-badge';
+        b.className = 'op-badge muted';
+        b.textContent = '备案…';
+        tile.appendChild(b);
+      }
+      return b;
+    }
+    async function refreshFiling() {
+      var b = ensureBadge();
+      if (!b) return;
+      var app = currentAppId();
+      var d = await devId();
+      if (!app || !d) { b.textContent = '备案 —'; b.className = 'op-badge muted'; return; }
+      try {
+        var j = await getJson('https://developer.taptap.cn/api/mini-app/v1/ad/info?app_id=' +
+          encodeURIComponent(app) + '&developer_id=' + encodeURIComponent(d));
+        var st = (j && j.data && j.data.game_filing_status) || '';
+        var m = LABELS[st] || { t: '未备案', c: 'muted' };
+        b.textContent = m.t;
+        b.className = 'op-badge ' + m.c;
+        b.title = '小游戏备案状态：' + (st || 'NOT_SUBMITTED');
+      } catch (e) {
+        b.textContent = '状态未知';
+        b.className = 'op-badge muted';
+      }
+    }
+    function start() { stop(); refreshFiling(); timer = setInterval(refreshFiling, 20000); }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) stop(); else start();
+    });
+    var n = 0;
+    var iv = setInterval(function () {
+      if (ensureBadge()) { clearInterval(iv); start(); }
+      else if (n++ > 40) clearInterval(iv);
+    }, 500);
+  })();
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wait);
   else wait();
 })();

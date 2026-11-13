@@ -8,6 +8,8 @@ import android.webkit.WebView
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class WebAppInterface(
     private val activity: Activity,
@@ -424,6 +426,131 @@ class WebAppInterface(
             }
             wv.loadUrl("https://rep.taptap.cn/$developerId/")
             handler.postDelayed({ if (!settled) done("{\"ok\":false,\"error\":\"TIMEOUT\"}") }, 20000L)
+        }
+    }
+
+    // ==================== 备案提醒（服务端轮询 + 邮件） ====================
+    private val FILING_BASE = "https://ark.yanyususu.online/tapsulor-filing"
+
+    private fun filingPrefs() = activity.getSharedPreferences("taptap_prefs", Context.MODE_PRIVATE)
+
+    private fun filingDeviceId(): String {
+        val p = filingPrefs()
+        return p.getString("filing_device_id", null) ?: run {
+            val v = java.util.UUID.randomUUID().toString()
+            p.edit().putString("filing_device_id", v).apply()
+            v
+        }
+    }
+
+    private fun filingDev(): String =
+        accountManager.getActiveDeveloperId() ?: accountManager.getDeveloperId() ?: ""
+
+    private fun serverPost(path: String, payload: String, token: String? = null): String {
+        return try {
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val b = Request.Builder()
+                .url(FILING_BASE + path)
+                .post(body)
+                .header("User-Agent", DESKTOP_UA)
+                .header("Accept", "application/json")
+            if (!token.isNullOrBlank()) b.header("X-Device-Token", token)
+            apiClient.httpClient.newCall(b.build()).execute().use { it.body?.string() ?: "" }
+        } catch (e: Exception) {
+            gson.toJson(mapOf("ok" to false, "error" to (e.message ?: "network_error")))
+        }
+    }
+
+    private fun resolveFiling(id: Int, payload: String) {
+        webView.post { webView.evaluateJavascript("window.__pendingFiling($id, ${jsString(payload)})", null) }
+    }
+
+    @JavascriptInterface fun filingSendCode(id: Int, email: String) {
+        scope.launch(Dispatchers.IO) {
+            val payload = gson.toJson(mapOf("email" to email, "device_id" to filingDeviceId()))
+            resolveFiling(id, serverPost("/send-code", payload))
+        }
+    }
+
+    @JavascriptInterface fun filingRegister(id: Int, email: String, code: String) {
+        scope.launch(Dispatchers.IO) {
+            val dev = filingDev()
+            if (dev.isEmpty()) { resolveFiling(id, "{\"ok\":false,\"error\":\"未识别开发者账号\"}"); return@launch }
+            val payload = gson.toJson(mapOf(
+                "device_id" to filingDeviceId(),
+                "developer_id" to dev,
+                "email" to email,
+                "code" to code,
+                "cookies" to accountManager.exportCookiesForServer()
+            ))
+            val r = serverPost("/register", payload)
+            try {
+                val j = com.google.gson.JsonParser.parseString(r).asJsonObject
+                if (j.get("ok")?.asBoolean == true) {
+                    val token = j.get("token")?.asString ?: ""
+                    filingPrefs().edit()
+                        .putString("filing_token_$dev", token)
+                        .putString("filing_email", email)
+                        .putBoolean("filing_enabled_$dev", true)
+                        .apply()
+                }
+            } catch (_: Exception) { }
+            resolveFiling(id, r)
+        }
+    }
+
+    @JavascriptInterface fun filingRefresh(id: Int) {
+        scope.launch(Dispatchers.IO) {
+            val dev = filingDev()
+            val token = filingPrefs().getString("filing_token_$dev", null)
+            if (dev.isEmpty() || token.isNullOrBlank()) {
+                resolveFiling(id, "{\"ok\":true,\"skipped\":true}"); return@launch
+            }
+            val payload = gson.toJson(mapOf("cookies" to accountManager.exportCookiesForServer()))
+            resolveFiling(id, serverPost("/refresh", payload, token))
+        }
+    }
+
+    @JavascriptInterface fun filingDisable(id: Int) {
+        scope.launch(Dispatchers.IO) {
+            val dev = filingDev()
+            val token = filingPrefs().getString("filing_token_$dev", null)
+            val r = if (token.isNullOrBlank()) "{\"ok\":true}" else serverPost("/disable", "{}", token)
+            filingPrefs().edit().putBoolean("filing_enabled_$dev", false).apply()
+            resolveFiling(id, r)
+        }
+    }
+
+    @JavascriptInterface fun filingTestMail(id: Int) {
+        scope.launch(Dispatchers.IO) {
+            val dev = filingDev()
+            val token = filingPrefs().getString("filing_token_$dev", null)
+            if (token.isNullOrBlank()) {
+                resolveFiling(id, "{\"ok\":false,\"error\":\"尚未绑定邮箱\"}"); return@launch
+            }
+            resolveFiling(id, serverPost("/test-mail", "{}", token))
+        }
+    }
+
+    @JavascriptInterface fun filingState(): String {
+        val dev = filingDev()
+        val p = filingPrefs()
+        val token = p.getString("filing_token_$dev", null)
+        return gson.toJson(mapOf(
+            "enabled" to (p.getBoolean("filing_enabled_$dev", false) && !token.isNullOrBlank()),
+            "email" to (p.getString("filing_email", "") ?: ""),
+            "hasToken" to !token.isNullOrBlank()
+        ))
+    }
+
+    /** App 启动/切号时静默刷新服务端 Cookie，保证 7×24 轮询不断 */
+    fun filingRefreshSilent() {
+        val dev = filingDev()
+        val token = filingPrefs().getString("filing_token_$dev", null) ?: return
+        if (!filingPrefs().getBoolean("filing_enabled_$dev", true)) return
+        scope.launch(Dispatchers.IO) {
+            val payload = gson.toJson(mapOf("cookies" to accountManager.exportCookiesForServer()))
+            serverPost("/refresh", payload, token)
         }
     }
 

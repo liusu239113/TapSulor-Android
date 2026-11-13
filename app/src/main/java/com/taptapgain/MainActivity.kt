@@ -338,6 +338,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 从设置页返回时,用户可能切换了主题色/字体,立即刷新底栏选中色
         applyBottomNavAccent()
+        // 备案提醒：App 启动/切回前台时静默刷新服务端 Cookie
+        if (::webAppInterface.isInitialized) webAppInterface.filingRefreshSilent()
         mainHandler.removeCallbacks(backgroundRefreshRunnable)
         if (hasResumedOnce) {
             try {

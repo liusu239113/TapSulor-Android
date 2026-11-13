@@ -294,6 +294,27 @@ class AccountManager(private val context: Context) {
     }
 
     /** Return cookies that should be sent for a request to [url]. */
+    /** 导出当前账号所有 TapTap Cookie，供备案提醒服务端轮询使用（HTTPS 上传，服务端加密存储） */
+    fun exportCookiesForServer(): List<Map<String, String>> {
+        val accId = getCurrentAccountId()
+        val out = mutableListOf<Map<String, String>>()
+        val seen = mutableSetOf<String>()
+        taptapCookieUrls.forEach { u ->
+            val url = u.toHttpUrlOrNull() ?: return@forEach
+            getCookiesForUrl(accId, url).forEach { c ->
+                val key = c.domain + "|" + c.name
+                if (seen.add(key)) {
+                    out.add(mapOf(
+                        "name" to c.name, "value" to c.value,
+                        "domain" to c.domain, "path" to c.path,
+                        "secure" to c.secure.toString(), "httpOnly" to c.httpOnly.toString()
+                    ))
+                }
+            }
+        }
+        return out
+    }
+
     fun getCookiesForUrl(accountId: String, url: HttpUrl): List<Cookie> {
         val store = cookieStore[accountId] ?: return emptyList()
         val now = System.currentTimeMillis()
