@@ -351,3 +351,131 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 800));
   else setTimeout(init, 800);
 })();
+
+/* ---------- 首页游戏卡片：备案/广告状态（累计广告收益右侧） ---------- */
+(function () {
+  'use strict';
+  if (!window.electronAPI || !window.electronAPI.fetch) return;
+  var CACHE = new Map();
+  var TTL = 10 * 60 * 1000;
+  var queue = [], busy = false, scanTimer = null;
+  var API = 'https://developer.taptap.cn';
+  var LABELS = {
+    AD: { label: '广告已开通', cls: 'ok' },
+    PENDING: { label: '备案审核中', cls: 'credit' },
+    PASSED: { label: '备案已通过', cls: 'ok' },
+    REJECTED: { label: '备案已驳回', cls: 'warn' },
+    NONE: { label: '未备案', cls: 'muted' }
+  };
+
+  function parse(r) {
+    if (!r) return null;
+    if (typeof r.body === 'string') { try { return JSON.parse(r.body); } catch (e) { return null; } }
+    if (r.body && typeof r.body === 'object') return r.body;
+    if (r.data || r.success !== undefined) return r;
+    return null;
+  }
+
+  async function devId() {
+    try {
+      var d = window.electronAPI.getActiveDeveloperId
+        ? await window.electronAPI.getActiveDeveloperId()
+        : await window.electronAPI.getDeveloperId();
+      return d ? String(d) : '';
+    } catch (e) { return ''; }
+  }
+
+  async function lookup(appId, dev) {
+    var key = dev + ':' + appId;
+    var hit = CACHE.get(key);
+    if (hit && Date.now() - hit.ts < TTL) return hit;
+    var q = '?app_id=' + encodeURIComponent(appId) + '&developer_id=' + encodeURIComponent(dev);
+    var ad = parse(await window.electronAPI.fetch(API + '/api/mini-app/v1/ad/info' + q).catch(function () { return null; }));
+    var result = null;
+    if (ad && ad.data && (ad.data.is_enabled === true || ad.data.is_enabled === 1 || ad.data.isEnabled === true)) {
+      result = LABELS.AD;
+    } else if (ad) {
+      var fil = parse(await window.electronAPI.fetch(API + '/api/mini-app/v2/filing/info' + q).catch(function () { return null; }));
+      var d = fil && fil.data ? fil.data : null;
+      var st = d ? Number(d.status != null ? d.status : d.filing_status) : NaN;
+      if (st === 2) result = LABELS.PASSED;
+      else if (st === 1) result = LABELS.PENDING;
+      else if (st === 3) result = LABELS.REJECTED;
+      else if (d) result = LABELS.NONE;
+    }
+    if (!result) return null;
+    var rec = { label: result.label, cls: result.cls, ts: Date.now() };
+    CACHE.set(key, rec);
+    return rec;
+  }
+
+  function paint(card, res) {
+    var sub = card.querySelector('.game-sub');
+    if (!sub) return;
+    var el = sub.querySelector('.filing-inline');
+    if (!el) {
+      el = document.createElement('span');
+      sub.appendChild(el);
+    }
+    el.className = 'op-badge filing-inline ' + res.cls;
+    el.textContent = res.label;
+  }
+
+  function pump() {
+    if (busy) return;
+    var job = queue.shift();
+    if (!job) return;
+    busy = true;
+    lookup(job.id, job.dev).then(function (res) {
+      if (res && job.card.isConnected) paint(job.card, res);
+    }).catch(function () {}).then(function () {
+      busy = false;
+      setTimeout(pump, 160);
+    });
+  }
+
+  function scan() {
+    var list = document.getElementById('game-list');
+    if (!list) return;
+    var cards = list.querySelectorAll('.game-card[data-app-id]');
+    if (!cards.length) return;
+    devId().then(function (dev) {
+      if (!dev) return;
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var id = card.getAttribute('data-app-id');
+        if (!id) continue;
+        var tag = dev + ':' + id;
+        if (card.__filingTag === tag) continue;
+        card.__filingTag = tag;
+        queue.push({ card: card, id: id, dev: dev });
+      }
+      pump();
+    });
+  }
+
+  function schedule() {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(scan, 400);
+  }
+
+  function reset() {
+    CACHE.clear();
+    queue.length = 0;
+    var cards = document.querySelectorAll('#game-list .game-card[data-app-id]');
+    for (var i = 0; i < cards.length; i++) delete cards[i].__filingTag;
+    schedule();
+  }
+
+  var list = document.getElementById('game-list');
+  if (list) new MutationObserver(schedule).observe(list, { childList: true, subtree: true });
+  try {
+    window.electronAPI.onStudioSwitched && window.electronAPI.onStudioSwitched(reset);
+    window.electronAPI.onAccountUpdated && window.electronAPI.onAccountUpdated(reset);
+    window.electronAPI.onLoginSuccess && window.electronAPI.onLoginSuccess(reset);
+    window.electronAPI.onAppResume && window.electronAPI.onAppResume(reset);
+  } catch (e) {}
+  setInterval(function () { if (!document.hidden) { reset(); } }, 5 * 60 * 1000);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
+  else schedule();
+})();
