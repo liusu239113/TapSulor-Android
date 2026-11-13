@@ -117,16 +117,31 @@ class FilingMonitorService : Service() {
         }
     }
 
-    private fun cookieHeader(): String =
-        accountManager.exportCookiesForServer()
-            .map { "${it["name"]}=${it["value"]}" }
-            .joinToString("; ")
+    private fun cookieHeaderFor(url: String): String {
+        val host = try { java.net.URI(url).host ?: "" } catch (_: Exception) { "" }
+        val all = accountManager.exportCookiesForServer()
+        // 只发属于该域名的 Cookie + 剔除非法字符（Tomcat 对非法 Cookie 头直接 400）+ 控制总长
+        fun legal(c: Map<String, String>): Boolean =
+            ((c["name"] ?: "") + (c["value"] ?: "")).all { it.code in 0x21..0x7e } &&
+                !(c["value"] ?: "").any { it == '"' || it == '\' || it == ';' || it == ',' || it == ' ' }
+        val matched = all.filter { legal(it) }.filter { c ->
+            val d = (c["domain"] ?: "").removePrefix(".").lowercase()
+            d.isNotEmpty() && (host == d || host.endsWith(".$d"))
+        }
+        val picked = matched.ifEmpty { all.filter { legal(it) } }
+        var header = picked.joinToString("; ") { "${it["name"]}=${it["value"]}" }
+        while (header.length > 6500 && picked.isNotEmpty()) {
+            picked.removeAt(picked.size - 1)
+            header = picked.joinToString("; ") { "${it["name"]}=${it["value"]}" }
+        }
+        return header
+    }
 
     private fun statusOf(appId: String, dev: String, ck: String): String? {
         val q = "?app_id=$appId&developer_id=$dev"
         // 产品口径：广告已开通即视为备案通过
         runCatching {
-            val (ac, ab) = httpGet("$API/api/mini-app/v1/ad/info$q", ck)
+            val (ac, ab) = httpGet("$API/api/mini-app/v1/ad/info$q", cookieHeaderFor("$API/api/mini-app/v1/ad/info$q"))
             if (ac == 401 || ac == 403) return "UNAUTHORIZED"
             if (ac == 200) {
                 val ad = JSONObject(ab).optJSONObject("data") ?: JSONObject()
@@ -134,7 +149,7 @@ class FilingMonitorService : Service() {
             }
         }
         runCatching {
-            val (fc, fb) = httpGet("$API/api/mini-app/v2/filing/info$q", ck)
+            val (fc, fb) = httpGet("$API/api/mini-app/v2/filing/info$q", cookieHeaderFor("$API/api/mini-app/v2/filing/info$q"))
             if (fc == 401 || fc == 403) return "UNAUTHORIZED"
             if (fc == 200) {
                 val d = JSONObject(fb).optJSONObject("data") ?: JSONObject()
@@ -154,10 +169,9 @@ class FilingMonitorService : Service() {
         val dev = accountManager.getActiveDeveloperId() ?: accountManager.getDeveloperId() ?: return
         val token = p.getString("filing_token_$dev", null) ?: return
         if (p.getBoolean("filing_enabled_$dev", false) != true) return
-        val ck = cookieHeader()
 
         // 游戏列表
-        val (lc, lb) = httpGet("$API/api/app/v2/list?developer_id=$dev&page=1&pagesize=100", ck)
+        val (lc, lb) = httpGet("$API/api/app/v2/list?developer_id=$dev&page=1&pagesize=100", cookieHeaderFor("$API/api/app/v2/list"))
         if (lc != 200) return
         val list = JSONObject(lb).optJSONObject("data")?.optJSONArray("list") ?: return
 
