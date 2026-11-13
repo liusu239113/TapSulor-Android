@@ -279,15 +279,22 @@
 /* ==================== 备案提醒设置 ==================== */
 (function () {
   function $(id) { return document.getElementById(id); }
+  var CD_KEY = 'filing_code_cooldown_until';
+  var timer = null;
   function init() {
     var box = $('filing-block');
     if (!box || box.dataset.bound) return;
     box.dataset.bound = '1';
     var email = $('filing-email'), code = $('filing-code'), send = $('filing-send-code');
     var bind = $('filing-bind'), test = $('filing-test'), toggle = $('filing-toggle');
-    var statusEl = $('filing-status-text'), tip = $('filing-tip');
+    var statusEl = $('filing-status-text'), msg = $('filing-msg');
     var st = { enabled: false, email: '', hasToken: false };
-    function setTip(t) { if (tip) tip.textContent = t; }
+
+    function say(t, kind) {
+      if (!msg) return;
+      msg.textContent = t || '';
+      msg.className = 'filing-msg' + (kind ? ' ' + kind : '');
+    }
     function readState() { try { st = (window.electronAPI.filingState && window.electronAPI.filingState()) || {}; } catch (e) { st = {}; } }
     function paint() {
       readState();
@@ -308,45 +315,109 @@
         bind.textContent = '验证并绑定';
       }
     }
+    function runCountdown(until) {
+      clearInterval(timer);
+      function tick() {
+        var left = Math.ceil((until - Date.now()) / 1000);
+        if (left > 0) {
+          send.disabled = true;
+          send.textContent = left + ' 秒后重发';
+        } else {
+          clearInterval(timer); timer = null;
+          send.disabled = false;
+          send.textContent = '发送验证码';
+          try { localStorage.removeItem(CD_KEY); } catch (e) {}
+        }
+      }
+      tick();
+      timer = setInterval(tick, 1000);
+    }
+    function startCooldown(sec) {
+      var until = Date.now() + sec * 1000;
+      try { localStorage.setItem(CD_KEY, String(until)); } catch (e) {}
+      runCountdown(until);
+    }
+    function resumeCooldown() {
+      try {
+        var until = Number(localStorage.getItem(CD_KEY) || 0);
+        if (until > Date.now()) runCountdown(until);
+      } catch (e) {}
+    }
+
     if (!window.electronAPI || !window.electronAPI.filingRegister) { statusEl.textContent = '当前版本不支持'; return; }
+
     send.addEventListener('click', async function () {
+      if (send.disabled) return;
       var e = (email.value || '').trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTip('请先填写正确的收件邮箱'); return; }
-      send.disabled = true; setTip('正在发送验证码…');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { say('请先填写正确的收件邮箱', 'err'); email.focus(); return; }
+      send.disabled = true;
+      send.textContent = '发送中…';
+      say('正在发送验证码…');
       try {
         var r = await window.electronAPI.filingSendCode(e);
-        if (r && r.ok) { setTip('验证码已发送到 ' + e + '，请查收邮箱（10 分钟内有效）'); code.focus(); }
-        else setTip('发送失败：' + ((r && r.error) || '请稍后再试'));
-      } catch (err) { setTip('发送失败：' + err); }
-      send.disabled = false;
+        if (r && r.ok) {
+          say('验证码已发送到 ' + e + '，10 分钟内有效；没收到请检查垃圾邮件。', 'ok');
+          code.focus();
+          startCooldown(60);
+        } else {
+          var m = (r && r.error) || '请稍后再试';
+          say('发送失败：' + m, 'err');
+          if (/频繁|稍后|60/.test(m)) startCooldown(60);
+          else { send.disabled = false; send.textContent = '发送验证码'; }
+        }
+      } catch (err) {
+        say('发送失败：' + err, 'err');
+        send.disabled = false;
+        send.textContent = '发送验证码';
+      }
     });
+
     bind.addEventListener('click', async function () {
       var e = (email.value || '').trim(), c = (code.value || '').trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTip('请先填写正确的收件邮箱'); return; }
-      if (!/^\d{6}$/.test(c)) { setTip('请填写 6 位验证码'); return; }
-      bind.disabled = true; setTip('正在验证并绑定…');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { say('请先填写正确的收件邮箱', 'err'); return; }
+      if (!/^\d{6}$/.test(c)) { say('请填写 6 位验证码', 'err'); return; }
+      bind.disabled = true;
+      bind.textContent = '验证中…';
+      say('正在验证并绑定…');
       try {
         var r = await window.electronAPI.filingRegister(e, c);
-        if (r && r.ok) { setTip('绑定成功，已开始监控 ' + (r.apps || 0) + ' 个游戏'); paint(); }
-        else setTip('绑定失败：' + ((r && r.error) || '请检查验证码'));
-      } catch (err) { setTip('绑定失败：' + err); }
+        if (r && r.ok) {
+          say('绑定成功，已开始监控 ' + (r.apps || 0) + ' 个游戏', 'ok');
+          code.value = '';
+        } else {
+          say('绑定失败：' + ((r && r.error) || '请检查验证码'), 'err');
+        }
+      } catch (err) { say('绑定失败：' + err, 'err'); }
       bind.disabled = false;
+      paint();
     });
+
     toggle.addEventListener('change', async function () {
       var on = toggle.checked;
       toggle.disabled = true;
+      say(on ? '正在开启备案提醒…' : '正在关闭备案提醒…');
       try {
         if (on) await window.electronAPI.filingEnable(); else await window.electronAPI.filingDisable();
-        setTip(on ? '备案提醒已开启' : '备案提醒已关闭（绑定保留）');
-      } catch (e) { toggle.checked = !on; setTip('操作失败，请重试'); }
+        say(on ? '备案提醒已开启' : '备案提醒已关闭（绑定保留）', 'ok');
+      } catch (e) { toggle.checked = !on; say('操作失败，请重试', 'err'); }
       toggle.disabled = false;
       paint();
     });
+
     test.addEventListener('click', async function () {
-      setTip('正在发送测试邮件…');
-      try { var r = await window.electronAPI.filingTestMail(); setTip(r && r.ok ? '测试邮件已发送，请查收' : '发送失败'); } catch (e) { setTip('发送失败'); }
+      if (test.disabled) return;
+      test.disabled = true;
+      say('正在发送测试邮件…');
+      try {
+        var r = await window.electronAPI.filingTestMail();
+        if (r && r.ok) say('测试邮件已发送，请查收', 'ok');
+        else say('发送失败：' + ((r && r.error) || '请稍后再试'), 'err');
+      } catch (e) { say('发送失败', 'err'); }
+      test.disabled = false;
     });
+
     paint();
+    resumeCooldown();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 800));
   else setTimeout(init, 800);
@@ -475,6 +546,7 @@
     window.electronAPI.onLoginSuccess && window.electronAPI.onLoginSuccess(reset);
     window.electronAPI.onAppResume && window.electronAPI.onAppResume(reset);
   } catch (e) {}
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) reset(); });
   setInterval(function () { if (!document.hidden) { reset(); } }, 5 * 60 * 1000);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
   else schedule();

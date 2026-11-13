@@ -348,3 +348,7 @@
 @media (max-width: 340px) {
   .game-card .game-sub { flex-wrap: wrap !important; }
 }
+
+.filing-msg { min-height: 16px; margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); word-break: break-all; }
+.filing-msg.ok { color: #10b981; }
+.filing-msg.err { color: #ef4444; }
