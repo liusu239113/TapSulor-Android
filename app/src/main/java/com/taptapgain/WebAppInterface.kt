@@ -507,6 +507,7 @@ class WebAppInterface(
                         .putString("filing_email", email)
                         .putBoolean("filing_enabled_$dev", true)
                         .apply()
+                    FilingMonitorService.start(activity)
                 }
             } catch (_: Exception) { }
             resolveFiling(id, r)
@@ -534,6 +535,7 @@ class WebAppInterface(
             }
             val r = serverPost("/enable", "{}", token)
             filingPrefs().edit().putBoolean("filing_enabled_$dev", true).apply()
+            FilingMonitorService.start(activity)
             resolveFiling(id, r)
         }
     }
@@ -544,6 +546,7 @@ class WebAppInterface(
             val token = filingPrefs().getString("filing_token_$dev", null)
             val r = if (token.isNullOrBlank()) "{\"ok\":true}" else serverPost("/disable", "{}", token)
             filingPrefs().edit().putBoolean("filing_enabled_$dev", false).apply()
+            FilingMonitorService.stop(activity)
             resolveFiling(id, r)
         }
     }
