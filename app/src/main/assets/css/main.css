@@ -320,7 +320,8 @@
 .rank-period-select { border: 1px solid var(--border-light); border-radius: 6px; background: var(--bg-card); color: var(--text-secondary); font-size: 12px; padding: 5px 8px; font-family: inherit; }
 
 /* ===== 备案状态徽标 + 备案提醒设置 ===== */
-#filing-badge { margin-left: 8px; align-self: center; white-space: nowrap; }
+#filing-badge { margin-left: 6px; align-self: center; white-space: nowrap; }
+@media(max-width:560px) { #filing-badge { margin-left: auto; } }
 .filing-input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-muted); color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none; }
 .filing-input:focus { border-color: var(--accent, #25b6e9); }
 .filing-code { flex: 0 0 90px; }

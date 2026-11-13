@@ -363,6 +363,24 @@
       REJECTED: { t: '备案已驳回', c: 'warn' }
     };
     var timer = null;
+    // 本文件有两个 IIFE，这里自带辅助函数，避免作用域问题
+    function filingAppId() {
+      try { var q = new URLSearchParams(location.search).get('app_id'); if (q) return q; } catch (e) {}
+      try { var g = JSON.parse(sessionStorage.getItem('currentGame') || 'null'); if (g && g.appId) return String(g.appId); } catch (e) {}
+      return null;
+    }
+    async function filingDev() {
+      try {
+        var d = await window.electronAPI.getActiveDeveloperId();
+        if (typeof d === 'string' && d) return d;
+      } catch (e) {}
+      try { return await window.electronAPI.getDeveloperId(); } catch (e) { return null; }
+    }
+    async function filingJson(url) {
+      var r = await window.electronAPI.fetch(url);
+      if (!r || !r.ok) throw new Error('HTTP ' + (r && r.status));
+      return JSON.parse(r.body);
+    }
     function ensureBadge() {
       var tile = document.getElementById('detail-grand-mini');
       if (!tile) return null;
@@ -372,18 +390,18 @@
         b.id = 'filing-badge';
         b.className = 'op-badge muted';
         b.textContent = '备案…';
-        tile.appendChild(b);
+        tile.parentNode.insertBefore(b, tile.nextSibling);
       }
       return b;
     }
     async function refreshFiling() {
       var b = ensureBadge();
       if (!b) return;
-      var app = currentAppId();
-      var d = await devId();
+      var app = filingAppId();
+      var d = await filingDev();
       if (!app || !d) { b.textContent = '备案 —'; b.className = 'op-badge muted'; return; }
       try {
-        var j = await getJson('https://developer.taptap.cn/api/mini-app/v1/ad/info?app_id=' +
+        var j = await filingJson('https://developer.taptap.cn/api/mini-app/v1/ad/info?app_id=' +
           encodeURIComponent(app) + '&developer_id=' + encodeURIComponent(d));
         var st = (j && j.data && j.data.game_filing_status) || '';
         var m = LABELS[st] || { t: '未备案', c: 'muted' };
