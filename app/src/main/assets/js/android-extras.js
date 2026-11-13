@@ -380,8 +380,9 @@
         '&developer_id=' + encodeURIComponent(d));
       if (!r || !r.ok) throw new Error('HTTP');
       var j = JSON.parse(r.body);
-      var raw = j && j.data ? (j.data.status != null ? j.data.status : j.data.filing_status) : null;
-      var num = Number(raw);
+      var stRaw = j && j.data ? Number(j.data.status) : 0;
+      var fsRaw = j && j.data ? Number(j.data.filing_status) : 0;
+      var num = (stRaw === 1 || stRaw === 2 || stRaw === 3) ? stRaw : ((fsRaw === 1 || fsRaw === 2 || fsRaw === 3) ? fsRaw : 0);
       var st = num === 1 ? 'PENDING' : (num === 2 ? 'PASSED' : (num === 3 ? 'REJECTED' : ''));
       var m = LABELS[st] || { t: '未备案', c: 'muted' };
       b.textContent = m.t;
