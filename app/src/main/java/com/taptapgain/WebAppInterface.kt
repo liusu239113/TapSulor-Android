@@ -512,6 +512,19 @@ class WebAppInterface(
         }
     }
 
+    @JavascriptInterface fun filingEnable(id: Int) {
+        scope.launch(Dispatchers.IO) {
+            val dev = filingDev()
+            val token = filingPrefs().getString("filing_token_$dev", null)
+            if (token.isNullOrBlank()) {
+                resolveFiling(id, "{\"ok\":false,\"error\":\"尚未绑定邮箱\"}"); return@launch
+            }
+            val r = serverPost("/enable", "{}", token)
+            filingPrefs().edit().putBoolean("filing_enabled_$dev", true).apply()
+            resolveFiling(id, r)
+        }
+    }
+
     @JavascriptInterface fun filingDisable(id: Int) {
         scope.launch(Dispatchers.IO) {
             val dev = filingDev()

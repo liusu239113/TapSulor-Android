@@ -284,27 +284,31 @@
     if (!box || box.dataset.bound) return;
     box.dataset.bound = '1';
     var email = $('filing-email'), code = $('filing-code'), send = $('filing-send-code');
-    var enable = $('filing-enable'), test = $('filing-test'), disable = $('filing-disable');
+    var bind = $('filing-bind'), test = $('filing-test'), toggle = $('filing-toggle');
     var statusEl = $('filing-status-text'), tip = $('filing-tip');
+    var st = { enabled: false, email: '', hasToken: false };
     function setTip(t) { if (tip) tip.textContent = t; }
-    function state() { try { return window.electronAPI.filingState ? window.electronAPI.filingState() : {}; } catch (e) { return {}; } }
+    function readState() { try { st = (window.electronAPI.filingState && window.electronAPI.filingState()) || {}; } catch (e) { st = {}; } }
     function paint() {
-      var st = state() || {};
+      readState();
       if (st.email && !email.value) email.value = st.email;
-      if (st.enabled) {
-        statusEl.textContent = '已开启 · ' + (st.email || '');
+      if (st.hasToken) {
+        statusEl.textContent = '已绑定 · ' + (st.email || '');
         statusEl.className = 'filing-status ok';
-        test.hidden = false; disable.hidden = false; enable.textContent = '重新绑定';
+        toggle.disabled = false;
+        toggle.checked = !!st.enabled;
+        test.hidden = false;
+        bind.textContent = '重新绑定';
       } else {
-        statusEl.textContent = '未开启';
+        statusEl.textContent = '未绑定';
         statusEl.className = 'filing-status';
-        test.hidden = true; disable.hidden = true; enable.textContent = '开启提醒';
+        toggle.disabled = true;
+        toggle.checked = false;
+        test.hidden = true;
+        bind.textContent = '验证并绑定';
       }
     }
-    if (!window.electronAPI || !window.electronAPI.filingRegister) {
-      statusEl.textContent = '当前版本不支持';
-      return;
-    }
+    if (!window.electronAPI || !window.electronAPI.filingRegister) { statusEl.textContent = '当前版本不支持'; return; }
     send.addEventListener('click', async function () {
       var e = (email.value || '').trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTip('请先填写正确的收件邮箱'); return; }
@@ -316,111 +320,34 @@
       } catch (err) { setTip('发送失败：' + err); }
       send.disabled = false;
     });
-    enable.addEventListener('click', async function () {
+    bind.addEventListener('click', async function () {
       var e = (email.value || '').trim(), c = (code.value || '').trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTip('请先填写正确的收件邮箱'); return; }
       if (!/^\d{6}$/.test(c)) { setTip('请填写 6 位验证码'); return; }
-      enable.disabled = true; setTip('正在绑定当前账号…');
+      bind.disabled = true; setTip('正在验证并绑定…');
       try {
         var r = await window.electronAPI.filingRegister(e, c);
-        if (r && r.ok) { setTip('已开启，正在监控 ' + (r.apps || 0) + ' 个游戏'); paint(); }
+        if (r && r.ok) { setTip('绑定成功，已开始监控 ' + (r.apps || 0) + ' 个游戏'); paint(); }
         else setTip('绑定失败：' + ((r && r.error) || '请检查验证码'));
       } catch (err) { setTip('绑定失败：' + err); }
-      enable.disabled = false;
+      bind.disabled = false;
+    });
+    toggle.addEventListener('change', async function () {
+      var on = toggle.checked;
+      toggle.disabled = true;
+      try {
+        if (on) await window.electronAPI.filingEnable(); else await window.electronAPI.filingDisable();
+        setTip(on ? '备案提醒已开启' : '备案提醒已关闭（绑定保留）');
+      } catch (e) { toggle.checked = !on; setTip('操作失败，请重试'); }
+      toggle.disabled = false;
+      paint();
     });
     test.addEventListener('click', async function () {
       setTip('正在发送测试邮件…');
       try { var r = await window.electronAPI.filingTestMail(); setTip(r && r.ok ? '测试邮件已发送，请查收' : '发送失败'); } catch (e) { setTip('发送失败'); }
     });
-    disable.addEventListener('click', async function () {
-      try { await window.electronAPI.filingDisable(); setTip('已关闭备案提醒'); paint(); } catch (e) {}
-    });
     paint();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 800));
   else setTimeout(init, 800);
-})();
-
-
-/* ==================== 首页卡片：备案状态徽标 ==================== */
-(function () {
-  var LABELS = {
-    PENDING: { t: '备案审核中', c: 'credit' },
-    PASSED: { t: '备案已通过', c: 'ok' },
-    REJECTED: { t: '备案已驳回', c: 'warn' }
-  };
-  var timer = null, devCache = null;
-  async function dev() {
-    if (devCache) return devCache;
-    try {
-      devCache = await window.electronAPI.getActiveDeveloperId();
-      if (!devCache) devCache = await window.electronAPI.getDeveloperId();
-    } catch (e) {}
-    return devCache;
-  }
-  async function one(card) {
-    var appId = card.getAttribute('data-app-id');
-    if (!appId) return;
-    var sub = card.querySelector('.game-sub');
-    if (!sub) return;
-    var pill = sub.querySelector('.game-total-pill');
-    if (!pill) return;
-    var b = card.querySelector('.filing-inline');
-    if (!b) {
-      b = document.createElement('span');
-      b.className = 'filing-inline op-badge muted';
-      b.textContent = '备案…';
-      pill.insertAdjacentElement('afterend', b);
-    }
-    var d = await dev();
-    if (!d) { b.textContent = '备案 —'; b.className = 'filing-inline op-badge muted'; return; }
-    try {
-      var base = 'https://developer.taptap.cn/api/mini-app/';
-      var qs = '?app_id=' + encodeURIComponent(appId) + '&developer_id=' + encodeURIComponent(d);
-      // 产品口径：广告已开通即视为备案通过
-      var ar = await window.electronAPI.fetch(base + 'v1/ad/info' + qs);
-      if (ar && ar.ok) {
-        var aj = JSON.parse(ar.body);
-        if (aj && aj.data && aj.data.is_enabled === true) {
-          b.textContent = '广告已开通';
-          b.className = 'filing-inline op-badge ok';
-          b.title = '广告已开通';
-          return;
-        }
-      }
-      var r = await window.electronAPI.fetch(base + 'v2/filing/info' + qs);
-      if (!r || !r.ok) throw new Error('HTTP');
-      var j = JSON.parse(r.body);
-      var stRaw = j && j.data ? Number(j.data.status) : 0;
-      var fsRaw = j && j.data ? Number(j.data.filing_status) : 0;
-      var num = (stRaw === 1 || stRaw === 2 || stRaw === 3) ? stRaw : ((fsRaw === 1 || fsRaw === 2 || fsRaw === 3) ? fsRaw : 0);
-      var st = num === 1 ? 'PENDING' : (num === 2 ? 'PASSED' : (num === 3 ? 'REJECTED' : ''));
-      var m = LABELS[st] || { t: '未备案', c: 'muted' };
-      b.textContent = m.t;
-      b.className = 'filing-inline op-badge ' + m.c;
-      b.title = '小游戏备案状态：' + (st || 'NOT_SUBMITTED');
-    } catch (e) {
-      b.textContent = '状态未知';
-      b.className = 'filing-inline op-badge muted';
-    }
-  }
-  var busy = false;
-  async function scan() {
-    if (busy) return;
-    busy = true;
-    try {
-      var cards = [...document.querySelectorAll('.game-card[data-app-id]')];
-      for (var i = 0; i < cards.length; i++) {
-        try {
-          await Promise.race([one(cards[i]), new Promise(function (r) { setTimeout(r, 8000); })]);
-        } catch (e) {}
-        await new Promise(function (r) { setTimeout(r, 120); });
-      }
-    } finally { busy = false; }
-  }
-  function start() { scan(); if (timer) clearInterval(timer); timer = setInterval(scan, 20000); }
-  var list = document.getElementById('game-list');
-  if (list) new MutationObserver(function () { setTimeout(scan, 400); }).observe(list, { childList: true });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 1500));
-  else setTimeout(start, 1500);
 })();
