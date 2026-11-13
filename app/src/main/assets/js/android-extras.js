@@ -340,3 +340,73 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 800));
   else setTimeout(init, 800);
 })();
+
+
+/* ==================== 首页卡片：备案状态徽标 ==================== */
+(function () {
+  var LABELS = {
+    PENDING: { t: '备案审核中', c: 'credit' },
+    PASSED: { t: '备案已通过', c: 'ok' },
+    REJECTED: { t: '备案已驳回', c: 'warn' }
+  };
+  var timer = null, devCache = null;
+  async function dev() {
+    if (devCache) return devCache;
+    try {
+      devCache = await window.electronAPI.getActiveDeveloperId();
+      if (!devCache) devCache = await window.electronAPI.getDeveloperId();
+    } catch (e) {}
+    return devCache;
+  }
+  async function one(card) {
+    var appId = card.getAttribute('data-app-id');
+    if (!appId) return;
+    var sub = card.querySelector('.game-sub');
+    if (!sub) return;
+    var pill = sub.querySelector('.game-total-pill');
+    if (!pill) return;
+    var b = card.querySelector('.filing-inline');
+    if (!b) {
+      b = document.createElement('span');
+      b.className = 'filing-inline op-badge muted';
+      b.textContent = '备案…';
+      pill.insertAdjacentElement('afterend', b);
+    }
+    var d = await dev();
+    if (!d) { b.textContent = '备案 —'; b.className = 'filing-inline op-badge muted'; return; }
+    try {
+      var r = await window.electronAPI.fetch(
+        'https://developer.taptap.cn/api/mini-app/v1/ad/info?app_id=' + encodeURIComponent(appId) +
+        '&developer_id=' + encodeURIComponent(d));
+      if (!r || !r.ok) throw new Error('HTTP');
+      var j = JSON.parse(r.body);
+      var st = (j && j.data && j.data.game_filing_status) || '';
+      var m = LABELS[st] || { t: '未备案', c: 'muted' };
+      b.textContent = m.t;
+      b.className = 'filing-inline op-badge ' + m.c;
+      b.title = '小游戏备案状态：' + (st || 'NOT_SUBMITTED');
+    } catch (e) {
+      b.textContent = '状态未知';
+      b.className = 'filing-inline op-badge muted';
+    }
+  }
+  var busy = false;
+  async function scan() {
+    if (busy) return;
+    busy = true;
+    try {
+      var cards = [...document.querySelectorAll('.game-card[data-app-id]')];
+      for (var i = 0; i < cards.length; i++) {
+        try {
+          await Promise.race([one(cards[i]), new Promise(function (r) { setTimeout(r, 8000); })]);
+        } catch (e) {}
+        await new Promise(function (r) { setTimeout(r, 120); });
+      }
+    } finally { busy = false; }
+  }
+  function start() { scan(); if (timer) clearInterval(timer); timer = setInterval(scan, 20000); }
+  var list = document.getElementById('game-list');
+  if (list) new MutationObserver(function () { setTimeout(scan, 400); }).observe(list, { childList: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 1500));
+  else setTimeout(start, 1500);
+})();

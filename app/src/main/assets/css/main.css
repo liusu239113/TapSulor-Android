@@ -330,3 +330,11 @@
 .filing-status { font-size: 12px; color: var(--text-tertiary); }
 .filing-status.ok { color: #10b981; }
 .filing-tip { margin-top: 8px; font-size: 11px; line-height: 1.55; color: var(--text-tertiary); }
+
+/* 首页卡片备案徽标（挂在「累计广告收益」标签右侧） */
+.filing-inline { margin-left: 6px; font-size: 10px; padding: 1px 6px; vertical-align: middle; }
+
+/* 备案徽标不截断：卡片副行允许换行，徽标完整显示 */
+.game-card .game-sub { flex-wrap: wrap !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; row-gap: 4px; }
+.game-card .game-sub > * { flex: 0 0 auto; }
+.filing-inline { flex: 0 0 auto !important; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
